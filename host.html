@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Host</title>
+
+<style>
+body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
+
+.big {
+  font-size:120px;
+  margin-top:20vh;
+}
+
+.timer {
+  font-size:40px;
+}
+
+.card {
+  background:#1c1c2b;
+  margin:15px;
+  padding:20px;
+  border-radius:20px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="setup">
+
+<h1>🐺 Host</h1>
+
+<div class="card">
+<div id="roles"></div>
+</div>
+
+<div class="card">
+<button onclick="createGame()">Create Game</button>
+<button onclick="startGame()">Start</button>
+</div>
+
+<div class="card">
+<canvas id="qr"></canvas>
+<p id="link"></p>
+</div>
+
+</div>
+
+<div id="game" style="display:none;">
+<div id="phaseIcon" class="big">🌙</div>
+<div id="timer" class="timer"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDz6gkzRAAez80-ewZyX-ev4303PQb_wfI",
+  authDomain: "werewolf-10fbd.firebaseapp.com",
+  databaseURL: "https://werewolf-10fbd-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "werewolf-10fbd",
+  storageBucket: "werewolf-10fbd.firebasestorage.app",
+  messagingSenderId: "220925987615",
+  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
+  measurementId: "G-L7ZG6JK23Z"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
+let roleCounts={}, gameId="", gameData={};
+
+roles.forEach(r=>{
+  roleCounts[r]=0;
+  let div=document.createElement("div");
+  div.innerHTML=`${r}
+  <button onclick="change('${r}',-1)">-</button>
+  <span id="${r}">0</span>
+  <button onclick="change('${r}',1)">+</button>`;
+  document.getElementById("roles").appendChild(div);
+});
+
+function change(r,a){
+  roleCounts[r]=Math.max(0,roleCounts[r]+a);
+  document.getElementById(r).innerText=roleCounts[r];
+}
+
+function createGame(){
+  gameId=Math.random().toString(36).substr(2,6);
+
+  db.ref("games/"+gameId).set({
+    roles:roleCounts,
+    players:{},
+    phase:"lobby",
+    votes:{},
+    wolfVotes:{},
+    actions:{},
+    ended:false
+  });
+
+  const url = location.origin+"/player.html?game="+gameId;
+
+  QRCode.toCanvas(document.getElementById("qr"), url);
+  document.getElementById("link").innerText = url;
+
+  listen();
+}
+
+function listen(){
+  db.ref("games/"+gameId).on("value", snap=>{
+    gameData=snap.val();
+  });
+}
+
+function checkAllReady(){
+  if(!gameData.players) return false;
+
+  const players = Object.values(gameData.players);
+
+  if(players.length === 0) return false;
+
+  return players.every(p => p.ready === true);
+}
+
+function startGame(){
+  assignRoles();
+  speak("Roles assigned. Press ready on your device");
+
+  // Wait loop
+  const interval = setInterval(()=>{
+    if(checkAllReady()){
+      clearInterval(interval);
+
+      speak("Everyone is ready. The game is starting");
+
+      document.getElementById("setup").style.display="none";
+      document.getElementById("game").style.display="block";
+
+      setPhase("night");
+      runNight();
+    }
+  },1000);
+}
+
+function assignRoles(){
+  let pool=[];
+  for(let r in roleCounts){
+    for(let i=0;i<roleCounts[r];i++) pool.push(r);
+  }
+
+  Object.keys(gameData.players).forEach(name=>{
+    let role=pool.splice(Math.floor(Math.random()*pool.length),1)[0]||"villager";
+    let extra = (role==="alpha") ? {lives:2} : {};
+    db.ref(`games/${gameId}/players/${name}`).update({role,...extra});
+  });
+}
+
+function setPhase(p){
+  db.ref("games/"+gameId+"/phase").set(p);
+  document.getElementById("phaseIcon").innerText = p==="night" ? "🌙" : "☀️";
+}
+
+function speak(t){
+  speechSynthesis.speak(new SpeechSynthesisUtterance(t));
+}
+
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function runNight(){
+  db.ref("games/"+gameId+"/wolfVotes").set({});
+  db.ref("games/"+gameId+"/actions").set({});
+
+  speak("Everyone close your eyes");
+
+  await delay(2000);
+  speak("Werewolves open your eyes and choose who to kill");
+  await delay(15000);
+  speak("Werewolves close your eyes");
+  await delay(3000)
+  speak("Doctor open your eyes and choose who to save");
+  await delay(10000);
+  speak("Doctor close your eyes");
+  await delay(3000)
+  speak("Seer open your eyes and choose who to reveal");
+  await delay(10000);
+  speak("Seer close your eyes");
+  await delay(3000)
+  resolveNight();
+}
+
+function resolveNight(){
+  db.ref("games/"+gameId).once("value", snap=>{
+    const g=snap.val();
+    let wolfVotes=g.wolfVotes||{}, count={};
+
+    Object.values(wolfVotes).forEach(v=>count[v]=(count[v]||0)+1);
+
+    let max=0,target=null;
+    for(let p in count){
+      if(count[p]>max){max=count[p]; target=p;}
+    }
+
+    let save=g.actions?.save;
+
+    if(target && target!==save){
+      killPlayer(target);
+      speak(target+" died");
+    } else speak("No one died");
+
+    if(checkWin()) return;
+
+    setPhase("day");
+    runDay();
+  });
+}
+
+function killPlayer(name){
+  let p=gameData.players[name];
+
+  if(p.role==="alpha"){
+    if(p.lives>1){
+      db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
+      speak("The alpha wolf is hurt");
+      return;
+    }
+  }
+
+  db.ref(`games/${gameId}/players/${name}/alive`).set(false);
+}
+
+async function runDay(){
+  let t=60;
+  let el=document.getElementById("timer");
+
+  let int=setInterval(()=>{
+    el.innerText="Time: "+t;
+    t--;
+
+    checkAllVotes();
+
+    if(t<0){
+      clearInterval(int);
+      countVotes();
+    }
+  },1000);
+}
+
+function checkAllVotes(){
+  let alive=Object.keys(gameData.players).filter(p=>gameData.players[p].alive);
+  let votes=gameData.votes||{};
+  if(Object.keys(votes).length>=alive.length){
+    countVotes();
+  }
+}
+
+function countVotes(){
+  let votes=gameData.votes||{}, count={};
+
+  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
+
+  let max=0,winners=[];
+  for(let p in count){
+    if(count[p]>max){max=count[p]; winners=[p];}
+    else if(count[p]===max) winners.push(p);
+  }
+
+  if(winners.length>1||winners[0]==="SKIP"){
+    speak("No one eliminated");
+  } else {
+    killPlayer(winners[0]);
+    speak(winners[0]+" eliminated");
+
+    if(gameData.players[winners[0]].role==="jester"){
+      return endGame("Jester wins!");
+    }
+  }
+
+  db.ref("games/"+gameId+"/votes").set({});
+
+  if(checkWin()) return;
+
+  setPhase("night");
+  runNight();
+}
+
+function checkWin(){
+  let alive=Object.values(gameData.players).filter(p=>p.alive);
+
+  let wolves=alive.filter(p=>p.role==="werewolf"||p.role==="alpha").length;
+  let others=alive.length-wolves;
+
+  if(wolves===0){
+    endGame("Villagers win!");
+    return true;
+  }
+
+  if(wolves>=others){
+    endGame("Werewolves win!");
+    return true;
+  }
+
+  return false;
+}
+
+function endGame(msg){
+  speak(msg);
+  db.ref("games/"+gameId).update({ended:true,winner:msg});
+}
+</script>
+
+</body>
+</html>
