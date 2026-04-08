@@ -100,7 +100,7 @@ function createGame(){
     ended:false
   });
 
-  const url = location.origin+"/player.html?game="+gameId;
+  const url = location.origin + location.pathname.replace("host.html","") + "player.html?game=" + gameId;
 
   QRCode.toCanvas(document.getElementById("qr"), url);
   document.getElementById("link").innerText = url;

@@ -19,6 +19,7 @@ button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px;
 <div class="card">
 <input id="name" placeholder="Name">
 <button onclick="join()">Join</button>
+<h3 id="onjointxt"></h3>
 </div>
 
 <div class="card">
@@ -50,6 +51,7 @@ let roleShown=false;
 
 function join(){
   myName=document.getElementById("name").value;
+  jointxt=document.getElementById("onjointxt").value;
 
   if(!myName) return alert("Enter a name");
 
@@ -57,6 +59,7 @@ function join(){
     alive: true,
     ready: false
   });
+  jointxt = "Wait for the game to start..."
 }
 
 function showRole(role){
