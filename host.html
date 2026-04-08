@@ -100,8 +100,7 @@ function createGame(){
     ended:false
   });
 
-  const base = location.href.substring(0, location.href.lastIndexOf("/") + 1);
-const url = base + "player.html?game=" + gameId;
+  const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
 
   QRCode.toCanvas(document.getElementById("qr"), url);
   document.getElementById("link").innerText = url;
