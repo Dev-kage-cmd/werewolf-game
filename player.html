@@ -46,14 +46,21 @@ const gameId=new URLSearchParams(location.search).get("game");
 let myName="", shown=false;
 
 function join(){
-  myName=name.value;
-  if(!myName) return alert("Enter name");
+  let input = document.getElementById("name").value.trim(); // remove spaces
+  if(input === "") return alert("Enter a name");
 
-  document.querySelector(".card").innerHTML="⏳ Joining...";
+  myName = input; // save globally
+
+  // Show joining text
+  document.getElementById("ui").innerHTML = "🔄 Joining...";
 
   db.ref(`games/${gameId}/players/${myName}`).set({
-    alive:true,
-    ready:false
+    alive: true,
+    ready: false
+  }).then(()=>{
+      document.getElementById("ui").innerHTML = "✅ Joined! Press Ready when role appears.";
+  }).catch(err=>{
+      alert("Error joining: "+err);
   });
 }
 
