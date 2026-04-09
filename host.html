@@ -77,8 +77,15 @@ const audio = {
   NightSFX: "NightSFX.mp3"
 };
 
-function play(src){ if(src) new Audio(src).play(); }
-function playRandom(arr){ if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]); }
+function play(src){
+  if(!gameActive()) return;
+  if(src) new Audio(src).play();
+}
+
+function playRandom(arr){
+  if(!gameActive()) return;
+  if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]);
+}
 
 let nightLoopAudio = null;
 
@@ -165,6 +172,10 @@ function listen(){
   });
 }
 
+function gameActive(){
+  return gameData && !gameData.ended;
+}
+
 // ===== ASSIGN ROLES =====
 function assignRoles(){
   let pool = [];
@@ -243,6 +254,7 @@ function waitVotes(path,count){
 
 // ===== NIGHT =====
 async function runNight(){
+  if(gameData.ended) return;
   setPhase("night");
   playRandom(audio.night);
   startNightLoop();
@@ -286,13 +298,21 @@ async function runNight(){
 
 // ===== RESOLVE NIGHT =====
 function resolveNight(){
-  const votes = gameData.wolfVotes||{}, count={};
-  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
-  const target = Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
-  const save = gameData.actions?.save;
+  if(gameData.ended) return;
 
-  if(target && target!==save) kill(target);
-  if(checkWin()) return;
+  let votes=gameData.wolfVotes||{}, count={};
+
+  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
+
+  let target=Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
+  let save=gameData.actions?.save;
+
+  if(target && target!==save){
+    kill(target);
+  }
+
+  if(checkWin()) return; // 👈 THIS STOPS EVERYTHING
+
   runDay();
 }
 
@@ -303,27 +323,41 @@ function kill(name){
 }
 
 // ===== DAY =====
+let dayInterval = null;
+
 async function runDay(){
+  if(gameData.ended) return;
+
   setPhase("day");
-  stopNightLoop()
+  stopNightLoop();
   playRandom(audio.morning);
 
   let t = 60;
-  const int = setInterval(()=>{
+
+  clearInterval(dayInterval); // 👈 IMPORTANT
+
+  dayInterval = setInterval(()=>{
+    if(gameData.ended){
+      clearInterval(dayInterval);
+      return;
+    }
+
     document.getElementById("timer").innerText="Time: "+t;
-    const aliveP = alive().map(([n])=>n);
-    const votes = gameData.votes||{};
+
+    let aliveP = alive().map(([n])=>n);
+    let votes = gameData.votes||{};
 
     if(Object.keys(votes).length>=aliveP.length){
-      clearInterval(int);
+      clearInterval(dayInterval);
       countVotes();
     }
 
     t--;
     if(t<0){
-      clearInterval(int);
+      clearInterval(dayInterval);
       countVotes();
     }
+
   },1000);
 }
 
@@ -354,6 +388,10 @@ function checkWin(){
 
 // ===== END GAME SCREEN =====
 function end(type){
+  gameData.ended = true;
+  clearInterval(dayInterval);
+  stopNightLoop();
+  
   let emoji="", audioSrc="";
   if(type==="villagers"){ emoji="🏡"; audioSrc=audio.villagersWin; }
   if(type==="werewolves"){ emoji="🐺"; audioSrc=audio.werewolvesWin; }
