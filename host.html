@@ -5,34 +5,18 @@
 
 <style>
 body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
-
-.big {
-  font-size:120px;
-  margin-top:20vh;
-}
-
-.timer {
-  font-size:40px;
-}
-
-.card {
-  background:#1c1c2b;
-  margin:15px;
-  padding:20px;
-  border-radius:20px;
-}
+.big { font-size:120px; margin-top:20vh; }
+.timer { font-size:40px; }
+.card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
 </style>
 </head>
 
 <body>
 
 <div id="setup">
-
 <h1>🐺 Host</h1>
 
-<div class="card">
-<div id="roles"></div>
-</div>
+<div class="card"><div id="roles"></div></div>
 
 <div class="card">
 <button onclick="createGame()">Create Game</button>
@@ -43,7 +27,6 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <canvas id="qr"></canvas>
 <p id="link"></p>
 </div>
-
 </div>
 
 <div id="game" style="display:none;">
@@ -56,59 +39,28 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
-
-// ===== AUDIO FILES (PUT YOUR MP3 LINKS HERE) =====
+// ===== AUDIO (PUT MP3 LINKS) =====
 const audio = {
-  start: "PUT_LINK_HERE.mp3",
-
-  werewolfOpen: "PUT_LINK_HERE.mp3",
-  werewolfClose: "PUT_LINK_HERE.mp3",
-
-  doctorOpen: "PUT_LINK_HERE.mp3",
-  doctorClose: "PUT_LINK_HERE.mp3",
-
-  seerOpen: "PUT_LINK_HERE.mp3",
-  seerClose: "PUT_LINK_HERE.mp3",
-
-  morning: [
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3"
-  ],
-
-  night: [
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3",
-    "PUT_LINK_HERE.mp3"
-  ]
+  start: "",
+  werewolfOpen: "",
+  werewolfClose: "",
+  doctorOpen: "",
+  doctorClose: "",
+  seerOpen: "",
+  seerClose: "",
+  morning: ["","","",""],
+  night: ["","","",""]
 };
 
-function play(src){
-  if(!src) return;
-  const a = new Audio(src);
-  a.play();
-}
+function play(src){ if(src){ new Audio(src).play(); } }
+function playRandom(arr){ if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]); }
 
-function playRandom(arr){
-  const r = arr[Math.floor(Math.random()*arr.length)];
-  play(r);
-}
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDz6gkzRAAez80-ewZyX-ev4303PQb_wfI",
-  authDomain: "werewolf-10fbd.firebaseapp.com",
-  databaseURL: "https://werewolf-10fbd-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "werewolf-10fbd",
-  storageBucket: "werewolf-10fbd.firebasestorage.app",
-  messagingSenderId: "220925987615",
-  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
-  measurementId: "G-L7ZG6JK23Z"
-};
+// ===== FIREBASE =====
+const firebaseConfig = { /* YOUR CONFIG UNCHANGED */ };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ===== GAME =====
 const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
 let roleCounts={}, gameId="", gameData={};
 
@@ -119,7 +71,7 @@ roles.forEach(r=>{
   <button onclick="change('${r}',-1)">-</button>
   <span id="${r}">0</span>
   <button onclick="change('${r}',1)">+</button>`;
-  document.getElementById("roles").appendChild(div);
+  rolesDiv.appendChild(div);
 });
 
 function change(r,a){
@@ -143,45 +95,13 @@ function createGame(){
   const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
 
   QRCode.toCanvas(document.getElementById("qr"), url);
-  document.getElementById("link").innerText = url;
+  link.innerText=url;
 
   listen();
 }
 
 function listen(){
-  db.ref("games/"+gameId).on("value", snap=>{
-    gameData=snap.val();
-  });
-}
-
-function checkAllReady(){
-  if(!gameData.players) return false;
-
-  const players = Object.values(gameData.players);
-
-  if(players.length === 0) return false;
-
-  return players.every(p => p.ready === true);
-}
-
-function startGame(){
-  assignRoles();
-  speak("Roles assigned. Press ready on your device");
-
-  // Wait loop
-  const interval = setInterval(()=>{
-    if(checkAllReady()){
-      clearInterval(interval);
-
-      speak("Everyone is ready. The game is starting");
-
-      document.getElementById("setup").style.display="none";
-      document.getElementById("game").style.display="block";
-
-      setPhase("night");
-      runNight();
-    }
-  },1000);
+  db.ref("games/"+gameId).on("value", snap=> gameData=snap.val());
 }
 
 function assignRoles(){
@@ -191,45 +111,56 @@ function assignRoles(){
   }
 
   Object.keys(gameData.players).forEach(name=>{
-    let role=pool.splice(Math.floor(Math.random()*pool.length),1)[0]||"villager";
-    let extra = (role==="alpha") ? {lives:2} : {};
-    db.ref(`games/${gameId}/players/${name}`).update({role,...extra});
+    let role=pool.splice(Math.random()*pool.length|0,1)[0]||"villager";
+    db.ref(`games/${gameId}/players/${name}`).update({
+      role,
+      alive:true,
+      lives: role==="alpha"?2:1
+    });
   });
+}
+
+function checkAllReady(){
+  let p=Object.values(gameData.players||{});
+  return p.length && p.every(x=>x.ready);
+}
+
+function startGame(){
+  assignRoles();
+  play(audio.start);
+
+  let wait=setInterval(()=>{
+    if(checkAllReady()){
+      clearInterval(wait);
+
+      setup.style.display="none";
+      game.style.display="block";
+
+      runNight();
+    }
+  },1000);
 }
 
 function setPhase(p){
   db.ref("games/"+gameId+"/phase").set(p);
-
-  document.getElementById("phaseIcon").innerText = 
-    p === "night" ? "🌙" : "☀️";
-
-  document.getElementById("timer").innerText = "";
-}
-function speak(t){
-  speechSynthesis.speak(new SpeechSynthesisUtterance(t));
+  phaseIcon.innerText = p==="night"?"🌙":"☀️";
+  timer.innerText="";
 }
 
 function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-async function waitForVotes(path, needed){
+function alive(){ return Object.entries(gameData.players).filter(([_,p])=>p.alive); }
+
+function waitVotes(path,count){
   return new Promise(resolve=>{
-    const ref = db.ref(`games/${gameId}/${path}`);
-    const check = snap=>{
-      const data = snap.val() || {};
-      if(Object.keys(data).length >= needed){
-        ref.off("value", check);
-        resolve();
-      }
-    };
-    ref.on("value", check);
+    db.ref(`games/${gameId}/${path}`).on("value", snap=>{
+      let d=snap.val()||{};
+      if(Object.keys(d).length>=count) resolve();
+    });
   });
 }
 
-function alivePlayers(){
-  return Object.entries(gameData.players)
-    .filter(([_,p])=>p.alive);
-}
-
+// ===== NIGHT =====
 async function runNight(){
   setPhase("night");
   playRandom(audio.night);
@@ -239,116 +170,83 @@ async function runNight(){
 
   await delay(2000);
 
-  // WEREWOLVES
+  let wolves=alive().filter(([_,p])=>p.role.includes("wolf"));
+
   play(audio.werewolfOpen);
-
-  let wolves = alivePlayers().filter(([_,p])=>p.role==="werewolf"||p.role==="alpha");
-  await waitForVotes("wolfVotes", wolves.length);
-
+  await waitVotes("wolfVotes",wolves.length);
   play(audio.werewolfClose);
-  await delay(2000);
 
-  // DOCTOR
-  let doctor = alivePlayers().find(([_,p])=>p.role==="doctor");
-  if(doctor){
+  let doc=alive().find(([_,p])=>p.role==="doctor");
+  if(doc){
     play(audio.doctorOpen);
-    await waitForVotes("actions/save", 1);
+    await waitVotes("actions/save",1);
     play(audio.doctorClose);
-    await delay(2000);
   }
 
-  // SEER
-  let seer = alivePlayers().find(([_,p])=>p.role==="seer");
+  let seer=alive().find(([_,p])=>p.role==="seer");
   if(seer){
     play(audio.seerOpen);
-    await waitForVotes("actions/reveal", 1);
+    await waitVotes("actions/reveal",1);
     play(audio.seerClose);
-    await delay(2000);
   }
 
   resolveNight();
 }
 
 function resolveNight(){
-  db.ref("games/"+gameId).once("value", snap=>{
-    const g=snap.val();
-    let wolfVotes=g.wolfVotes||{}, count={};
+  let votes=gameData.wolfVotes||{}, count={};
 
-    Object.values(wolfVotes).forEach(v=>count[v]=(count[v]||0)+1);
+  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
 
-    let max=0,target=null;
-    for(let p in count){
-      if(count[p]>max){max=count[p]; target=p;}
-    }
+  let target=Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
+  let save=gameData.actions?.save;
 
-    let save=g.actions?.save;
+  if(target && target!==save){
+    kill(target);
+  }
 
-    if(target && target!==save){
-      killPlayer(target);
-      speak(target+" died");
-    } else speak("No one died");
+  if(checkWin()) return;
 
-    if(checkWin()) return;
-
-    setPhase("day");
-    runDay();
-  });
+  runDay();
 }
 
-function killPlayer(name){
+function kill(name){
   let p=gameData.players[name];
 
-  if(p.role==="alpha"){
-    if(p.lives>1){
-      db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
-      speak("The alpha wolf is hurt");
-      return;
-    }
+  if(p.role==="alpha" && p.lives>1){
+    db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
+    play(audio.hurt);
+    return;
   }
 
   db.ref(`games/${gameId}/players/${name}/alive`).set(false);
 }
 
+// ===== DAY =====
 async function runDay(){
   setPhase("day");
   playRandom(audio.morning);
 
   let t=60;
-  let el=document.getElementById("timer");
 
-  return new Promise(resolve=>{
-    let int=setInterval(()=>{
+  let int=setInterval(()=>{
+    timer.innerText="Time: "+t;
 
-      el.innerText = "Time: " + t;
+    let aliveP=alive().map(([n])=>n);
+    let votes=gameData.votes||{};
 
-      // ALL VOTED → END EARLY
-      let alive = alivePlayers().map(([n])=>n);
-      let votes = gameData.votes || {};
+    if(Object.keys(votes).length>=aliveP.length){
+      clearInterval(int);
+      countVotes();
+    }
 
-      if(Object.keys(votes).length >= alive.length){
-        clearInterval(int);
-        countVotes();
-        resolve();
-      }
+    t--;
+    if(t<0){
+      clearInterval(int);
+      countVotes();
+    }
 
-      t--;
-
-      if(t < 0){
-        clearInterval(int);
-        countVotes();
-        resolve();
-      }
-
-    },1000);
-  });
-}
-
-function checkAllVotes(){
-  let alive=Object.keys(gameData.players).filter(p=>gameData.players[p].alive);
-  let votes=gameData.votes||{};
-  if(Object.keys(votes).length>=alive.length){
-    countVotes();
-  }
+  },1000);
 }
 
 function countVotes(){
@@ -356,55 +254,37 @@ function countVotes(){
 
   Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
 
-  let max=0,winners=[];
-  for(let p in count){
-    if(count[p]>max){max=count[p]; winners=[p];}
-    else if(count[p]===max) winners.push(p);
-  }
+  let winner=Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
 
-  if(winners.length>1||winners[0]==="SKIP"){
-    speak("No one eliminated");
-  } else {
-    killPlayer(winners[0]);
-    speak(winners[0]+" eliminated");
+  if(winner && winner!=="SKIP"){
+    kill(winner);
 
-    if(gameData.players[winners[0]].role==="jester"){
-      return endGame("Jester wins!");
+    if(gameData.players[winner].role==="jester"){
+      return end("Jester wins!");
     }
   }
 
-  db.ref("games/"+gameId+"/votes").set({});
+  db.ref(`games/${gameId}/votes`).set({});
 
   if(checkWin()) return;
 
-  setPhase("night");
   runNight();
 }
 
 function checkWin(){
-  let alive=Object.values(gameData.players).filter(p=>p.alive);
+  let a=alive().map(([_,p])=>p);
+  let wolves=a.filter(p=>p.role.includes("wolf")).length;
 
-  let wolves=alive.filter(p=>p.role==="werewolf"||p.role==="alpha").length;
-  let others=alive.length-wolves;
-
-  if(wolves===0){
-    endGame("Villagers win!");
-    return true;
-  }
-
-  if(wolves>=others){
-    endGame("Werewolves win!");
-    return true;
-  }
+  if(wolves===0) return end("Villagers win!");
+  if(wolves>=a.length-wolves) return end("Werewolves win!");
 
   return false;
 }
 
-function endGame(msg){
-  speak(msg);
-  db.ref("games/"+gameId).update({ended:true,winner:msg});
+function end(msg){
+  db.ref(`games/${gameId}`).update({ended:true,winner:msg});
+  alert(msg);
 }
 </script>
-
 </body>
 </html>

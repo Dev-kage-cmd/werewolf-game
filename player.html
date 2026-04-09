@@ -4,11 +4,9 @@
 <title>Player</title>
 
 <style>
-body { background:#0f0f1a; color:white; font-family:Arial; text-align:center; }
+body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 .card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
 button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px; width:90%; border-radius:10px; }
-.glow { color:#ffeaa7; text-shadow:0 0 10px #ffeaa7; }
-.dead { opacity:0.5; }
 </style>
 </head>
 
@@ -22,7 +20,7 @@ button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px;
 </div>
 
 <div class="card">
-<h2 id="role" class="glow"></h2>
+<h2 id="role"></h2>
 </div>
 
 <div class="card" id="ui"></div>
@@ -31,139 +29,103 @@ button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px;
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyDz6gkzRAAez80-ewZyX-ev4303PQb_wfI",
-  authDomain: "werewolf-10fbd.firebaseapp.com",
-  databaseURL: "https://werewolf-10fbd-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "werewolf-10fbd",
-  storageBucket: "werewolf-10fbd.firebasestorage.app",
-  messagingSenderId: "220925987615",
-  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
-  measurementId: "G-L7ZG6JK23Z"
-};
+const firebaseConfig = { /* SAME CONFIG */ };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const gameId=new URLSearchParams(location.search).get("game");
-let myName="";
-let roleShown=false;
+let myName="", shown=false;
 
 function join(){
-  myName=document.getElementById("name").value;
-  if(!myName) return alert("Enter a name");
+  myName=name.value;
+  if(!myName) return alert("Enter name");
 
-  document.querySelector(".card").innerHTML = "⏳ Joining...";
+  document.querySelector(".card").innerHTML="⏳ Joining...";
 
   db.ref(`games/${gameId}/players/${myName}`).set({
-    alive: true,
-    ready: false
+    alive:true,
+    ready:false
   });
 }
 
 function showRole(role){
-  const ui = document.getElementById("ui");
-
-  ui.innerHTML = `
-    <h2>Your role is:</h2>
+  ui.innerHTML=`
+    <h2>Your role:</h2>
     <h1>${role}</h1>
-    <button id="readyBtn">✅ Ready</button>
+    <button onclick="ready()">Ready</button>
   `;
+}
 
-  document.getElementById("readyBtn").onclick = ()=>{
-    db.ref(`games/${gameId}/players/${myName}/ready`).set(true);
-    ui.innerHTML = "⏳ Waiting for other players...";
-  };
+function ready(){
+  db.ref(`games/${gameId}/players/${myName}/ready`).set(true);
+  ui.innerHTML="⏳ Waiting...";
 }
 
 db.ref("games/"+gameId).on("value", snap=>{
-  const game = snap.val();
-  if(!game || !game.players || !game.players[myName]) return;
+  let g=snap.val();
+  if(!g || !g.players || !g.players[myName]) return;
 
-  const me = game.players[myName];
+  let me=g.players[myName];
 
-  // DEAD UI
-  if(me.alive === false){
-    document.getElementById("ui").innerHTML = "💀 You are dead";
-    return;
-  }
+  if(!me.alive){ ui.innerHTML="💀 Dead"; return; }
 
-  // SHOW ROLE ONCE until ready
   if(me.role && !me.ready){
-    if(!roleShown){
-      showRole(me.role);
-      roleShown = true;
-    }
+    if(!shown){ showRole(me.role); shown=true; }
     return;
   }
 
-  // AFTER READY → GAMEPLAY
-  if(game.phase === "night") nightUI(me.role, game.players, game);
-  if(game.phase === "day") voteUI(game.players);
+  if(g.phase==="night") night(me.role,g);
+  if(g.phase==="day") day(g.players);
 });
 
-function nightUI(role, players, game){
-  let ui=document.getElementById("ui");
+function night(role,g){
   ui.innerHTML="🌙 Waiting...";
 
-  // WEREWOLVES
-  if((role==="werewolf" || role==="alpha") && game.wolfVotes){
-
-    ui.innerHTML="🐺 Vote who to kill";
-
-    makeButtons(players,t=>{
+  if((role==="werewolf"||role==="alpha") && g.wolfVotes){
+    ui.innerHTML="🐺 Vote";
+    buttons(g.players,t=>{
       db.ref(`games/${gameId}/wolfVotes/${myName}`).set(t);
-      ui.innerHTML="✅ You have chosen";
-    },n=>n!==myName && !players[n].role.includes("wolf"));
+      ui.innerHTML="✅ Chosen";
+    },n=>n!==myName && !g.players[n].role.includes("wolf"));
   }
 
-  // DOCTOR
-  if(role==="doctor" && !game.actions?.save){
-
-    ui.innerHTML="💉 Choose someone to save";
-
-    makeButtons(players,t=>{
+  if(role==="doctor" && !g.actions?.save){
+    ui.innerHTML="💉 Save";
+    buttons(g.players,t=>{
       db.ref(`games/${gameId}/actions/save`).set(t);
-      ui.innerHTML="✅ You have chosen";
+      ui.innerHTML="✅ Saved";
     },n=>n!==myName);
   }
 
-  // SEER
-  if(role==="seer" && !game.actions?.reveal){
-
-    ui.innerHTML="🔮 Choose someone";
-
-    makeButtons(players,t=>{
+  if(role==="seer" && !g.actions?.reveal){
+    ui.innerHTML="🔮 Reveal";
+    buttons(g.players,t=>{
       db.ref(`games/${gameId}/actions/reveal`).set(t);
-
-      alert(players[t].role.includes("wolf") ? "🐺 WEREWOLF" : "🙂 NOT WOLF");
-
-      ui.innerHTML="✅ You have chosen";
+      alert(g.players[t].role.includes("wolf")?"🐺":"🙂");
+      ui.innerHTML="✅ Done";
     },n=>n!==myName);
   }
 }
 
-function voteUI(players){
-  let ui=document.getElementById("ui");
-  ui.innerHTML="☀️ Vote for a player";
+function day(players){
+  ui.innerHTML="☀️ Vote";
 
-  makeButtons(players,t=>{
+  buttons(players,t=>{
     db.ref(`games/${gameId}/votes/${myName}`).set(t);
-    ui.innerHTML="🗳️ You have voted";
+    ui.innerHTML="🗳️ Voted";
   },n=>n!==myName);
 
   let skip=document.createElement("button");
-  skip.innerText="⏭ Skip Vote";
+  skip.innerText="⏭ Skip";
   skip.onclick=()=>{
     db.ref(`games/${gameId}/votes/${myName}`).set("SKIP");
-    ui.innerHTML="⏭ You skipped";
+    ui.innerHTML="⏭ Skipped";
   };
 
   ui.appendChild(skip);
 }
 
-function makeButtons(players,cb,filter){
-  let ui=document.getElementById("ui");
-
+function buttons(players,cb,filter){
   Object.keys(players).forEach(n=>{
     if(players[n].alive){
       if(filter && !filter(n)) return;
@@ -176,6 +138,5 @@ function makeButtons(players,cb,filter){
   });
 }
 </script>
-
 </body>
 </html>
