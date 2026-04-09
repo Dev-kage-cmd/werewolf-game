@@ -45,7 +45,8 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
-// ===== AUDIO (PUT MP3 LINKS) =====
+window.onload = () => {
+  // ===== AUDIO (PUT MP3 LINKS) =====
 const audio = {
   start: "",
   werewolfOpen: "",
@@ -76,16 +77,19 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // ===== GAME =====
-const rolesDiv = document.getElementById("roles"); // <-- ADD THIS
+const rolesDiv = document.getElementById("roles");
 
 roles.forEach(r=>{
-  roleCounts[r]=0;
+  roleCounts[r] = 0;
 
-  let div=document.createElement("div");
-  div.innerHTML=`${r}
-  <button onclick="change('${r}',-1)">-</button>
-  <span id="${r}">0</span>
-  <button onclick="change('${r}',1)">+</button>`;
+  let div = document.createElement("div");
+
+  div.innerHTML = `
+    ${r}
+    <button onclick="change('${r}',-1)">-</button>
+    <span id="${r}">0</span>
+    <button onclick="change('${r}',1)">+</button>
+  `;
 
   rolesDiv.appendChild(div);
 });
@@ -414,6 +418,7 @@ function updateVoteCounter(){
   `;
 
   el.innerHTML = html;
+}
 }
 </script>
 </body>
