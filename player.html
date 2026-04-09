@@ -2,9 +2,8 @@
 <html>
 <head>
 <title>Player</title>
-
 <style>
-body { background:#0f0f1a; color:white; font-family:Arial; text-align:center; }
+body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 .card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
 button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px; width:90%; border-radius:10px; }
 </style>
@@ -19,7 +18,7 @@ button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px;
 <button onclick="join()">Join</button>
 </div>
 
-<div id="ui" class="card"></div>
+<div class="card" id="ui"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -32,9 +31,9 @@ const firebaseConfig = {
   projectId: "werewolf-10fbd",
   storageBucket: "werewolf-10fbd.firebasestorage.app",
   messagingSenderId: "220925987615",
-  appId: "1:220925987615:web:444dec6d8370373cd6be2a"
+  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
+  measurementId: "G-L7ZG6JK23Z"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -43,72 +42,92 @@ let myName="";
 
 function join(){
   myName=document.getElementById("name").value;
-  document.getElementById("ui").innerHTML="Joining...";
-  
+
+  document.getElementById("ui").innerHTML="⏳ Joining...";
+
   db.ref(`games/${gameId}/players/${myName}`).set({
     alive:true,
     ready:true
   });
 }
 
-db.ref("games/"+gameId).on("value",snap=>{
-  const game=snap.val();
-  if(!game || !game.players[myName]) return;
+db.ref("games/"+gameId).on("value", snap=>{
+  const g=snap.val();
+  if(!g || !g.players || !g.players[myName]) return;
 
-  const me=game.players[myName];
-  const ui=document.getElementById("ui");
+  const me=g.players[myName];
 
   if(!me.alive){
-    ui.innerHTML="💀 Dead";
+    ui.innerHTML="💀 You are dead";
     return;
   }
 
-  if(game.phase==="night"){
-    if(me.role==="werewolf" || me.role==="alpha"){
-      ui.innerHTML="Vote";
-      makeButtons(game.players,t=>{
-        db.ref(`games/${gameId}/wolfVotes/${myName}`).set(t);
-        ui.innerHTML="Chosen";
-      },n=>n!==myName && game.players[n].role!=="werewolf" && game.players[n].role!=="alpha");
+  if(g.phase==="night"){
+    if(g.activeRole==="werewolf" && (me.role==="werewolf"||me.role==="alpha")){
+      showWolf(g.players);
     }
-
-    if(me.role==="doctor"){
-      ui.innerHTML="Save";
-      makeButtons(game.players,t=>{
-        db.ref(`games/${gameId}/actions/save`).set(t);
-        ui.innerHTML="Saved";
-      },n=>n!==myName);
+    else if(g.activeRole==="doctor" && me.role==="doctor"){
+      showDoctor(g.players);
     }
-
-    if(me.role==="seer"){
-      ui.innerHTML="Reveal";
-      makeButtons(game.players,t=>{
-        db.ref(`games/${gameId}/seer/${myName}`).set(t);
-        alert(game.players[t].role.includes("wolf")?"WOLF":"NOT");
-        ui.innerHTML="Revealed";
-      },n=>n!==myName);
+    else if(g.activeRole==="seer" && me.role==="seer"){
+      showSeer(g.players);
+    }
+    else{
+      ui.innerHTML="😴 Sleep...";
     }
   }
 
-  if(game.phase==="day"){
-    ui.innerHTML="Vote";
-    makeButtons(game.players,t=>{
-      db.ref(`games/${gameId}/votes/${myName}`).set(t);
-      ui.innerHTML="Voted";
-    },n=>n!==myName);
-
-    let skip=document.createElement("button");
-    skip.innerText="Skip";
-    skip.onclick=()=>{
-      db.ref(`games/${gameId}/votes/${myName}`).set("SKIP");
-      ui.innerHTML="Skipped";
-    };
-    ui.appendChild(skip);
+  if(g.phase==="day"){
+    showVote(g.players);
   }
 });
 
+function showWolf(players){
+  ui.innerHTML="🐺 Choose target";
+
+  makeButtons(players,n=>{
+    db.ref(`games/${gameId}/wolfVotes/${myName}`).set(n);
+    ui.innerHTML="✅ Voted";
+  },n=>n!==myName && players[n].role!=="werewolf" && players[n].role!=="alpha");
+}
+
+function showDoctor(players){
+  ui.innerHTML="💉 Save someone";
+
+  makeButtons(players,n=>{
+    db.ref(`games/${gameId}/actions/save`).set(n);
+    ui.innerHTML="✅ Saved";
+  },n=>n!==myName);
+}
+
+function showSeer(players){
+  ui.innerHTML="🔮 Reveal someone";
+
+  makeButtons(players,n=>{
+    db.ref(`games/${gameId}/actions/seer`).set(n);
+    alert(players[n].role.includes("wolf")?"🐺 WOLF":"🙂 SAFE");
+    ui.innerHTML="✅ Done";
+  },n=>n!==myName);
+}
+
+function showVote(players){
+  ui.innerHTML="☀️ Vote";
+
+  makeButtons(players,n=>{
+    db.ref(`games/${gameId}/votes/${myName}`).set(n);
+    ui.innerHTML="🗳️ Voted";
+  },n=>n!==myName);
+
+  let skip=document.createElement("button");
+  skip.innerText="Skip";
+  skip.onclick=()=>{
+    db.ref(`games/${gameId}/votes/${myName}`).set("SKIP");
+    ui.innerHTML="Skipped";
+  };
+  ui.appendChild(skip);
+}
+
 function makeButtons(players,cb,filter){
-  let ui=document.getElementById("ui");
   Object.keys(players).forEach(n=>{
     if(players[n].alive){
       if(filter && !filter(n)) return;
