@@ -56,7 +56,16 @@ function play(src){ if(src){ new Audio(src).play(); } }
 function playRandom(arr){ if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]); }
 
 // ===== FIREBASE =====
-const firebaseConfig = { /* YOUR CONFIG UNCHANGED */ };
+const firebaseConfig = {
+  apiKey: "AIzaSyDz6gkzRAAez80-ewZyX-ev4303PQb_wfI",
+  authDomain: "werewolf-10fbd.firebaseapp.com",
+  databaseURL: "https://werewolf-10fbd-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "werewolf-10fbd",
+  storageBucket: "werewolf-10fbd.firebasestorage.app",
+  messagingSenderId: "220925987615",
+  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
+  measurementId: "G-L7ZG6JK23Z"
+};
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
