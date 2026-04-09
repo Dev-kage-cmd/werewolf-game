@@ -211,24 +211,33 @@ async function runNight(){
 
   await delay(2000);
 
-  let wolves=alive().filter(([_,p])=>p.role.includes("wolf"));
+  let wolves = alive().filter(([_,p])=>p.role.includes("wolf"));
 
+  // === Werewolves Turn ===
+  db.ref(`games/${gameId}/nightRole`).set("werewolf");
   play(audio.werewolfOpen);
-  await waitVotes("wolfVotes",wolves.length);
+  await waitVotes("wolfVotes", wolves.length);
   play(audio.werewolfClose);
+  db.ref(`games/${gameId}/nightRole`).set(null);
 
-  let doc=alive().find(([_,p])=>p.role==="doctor");
+  // === Doctor Turn ===
+  let doc = alive().find(([_,p])=>p.role==="doctor");
   if(doc){
+    db.ref(`games/${gameId}/nightRole`).set("doctor");
     play(audio.doctorOpen);
     await waitVotes("actions/save",1);
     play(audio.doctorClose);
+    db.ref(`games/${gameId}/nightRole`).set(null);
   }
 
-  let seer=alive().find(([_,p])=>p.role==="seer");
+  // === Seer Turn ===
+  let seer = alive().find(([_,p])=>p.role==="seer");
   if(seer){
+    db.ref(`games/${gameId}/nightRole`).set("seer");
     play(audio.seerOpen);
     await waitVotes("actions/reveal",1);
     play(audio.seerClose);
+    db.ref(`games/${gameId}/nightRole`).set(null);
   }
 
   resolveNight();

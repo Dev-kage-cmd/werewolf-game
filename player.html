@@ -78,48 +78,84 @@ function ready(){
 }
 
 db.ref("games/"+gameId).on("value", snap=>{
-  let g=snap.val();
-  if(!g || !g.players || !g.players[myName]) return;
+  const game = snap.val();
+  if(!game || !game.players || !game.players[myName]) return;
 
-  let me=g.players[myName];
+  const me = game.players[myName];
 
-  if(!me.alive){ ui.innerHTML="💀 Dead"; return; }
-
-  if(me.role && !me.ready){
-    if(!shown){ showRole(me.role); shown=true; }
+  // DEAD
+  if(me.alive === false){
+    document.getElementById("ui").innerHTML = "💀 You are dead";
     return;
   }
 
-  if(g.phase==="night") night(me.role,g);
-  if(g.phase==="day") day(g.players);
+  // SHOW ROLE UNTIL READY
+  if(me.role && !me.ready){
+    if(!roleShown){
+      showRole(me.role);
+      roleShown = true;
+    }
+    return;
+  }
+
+  // ===== NIGHT PHASE =====
+  if(game.phase === "night") {
+    const nightRole = game.nightRole || null; // current active night role
+
+    // Werewolves turn
+    const isWerewolf = me.role==="werewolf"||me.role==="alpha";
+    if(nightRole==="werewolf" && isWerewolf) {
+      nightUI(me.role, game.players);
+    }
+    // Doctor turn
+    else if(nightRole==="doctor" && me.role==="doctor") {
+      nightUI(me.role, game.players);
+    }
+    // Seer turn
+    else if(nightRole==="seer" && me.role==="seer") {
+      nightUI(me.role, game.players);
+    }
+    else {
+      document.getElementById("ui").innerHTML = "⏳ Waiting for narrator...";
+    }
+    return;
+  }
+
+  // ===== DAY PHASE =====
+  if(game.phase === "day") voteUI(game.players);
 });
 
-function night(role,g){
-  ui.innerHTML="🌙 Waiting...";
+function nightUI(role, players){
+  let ui = document.getElementById("ui");
+  ui.innerHTML = ""; // clear
 
-  if((role==="werewolf"||role==="alpha") && g.wolfVotes){
-    ui.innerHTML="🐺 Vote";
-    buttons(g.players,t=>{
+  if(role==="werewolf" || role==="alpha"){
+    ui.innerHTML="🐺 Choose a victim";
+
+    // Only show alive non-werewolves
+    makeButtons(players, t=>{
       db.ref(`games/${gameId}/wolfVotes/${myName}`).set(t);
-      ui.innerHTML="✅ Chosen";
-    },n=>n!==myName && !g.players[n].role.includes("wolf"));
+      ui.innerHTML="✅ You have voted";
+    }, n=>n!==myName && !players[n].role.includes("wolf") && players[n].alive);
   }
 
-  if(role==="doctor" && !g.actions?.save){
-    ui.innerHTML="💉 Save";
-    buttons(g.players,t=>{
+  if(role==="doctor"){
+    ui.innerHTML="💉 Choose someone to save";
+
+    makeButtons(players, t=>{
       db.ref(`games/${gameId}/actions/save`).set(t);
       ui.innerHTML="✅ Saved";
-    },n=>n!==myName);
+    }, n=>n!==myName && players[n].alive);
   }
 
-  if(role==="seer" && !g.actions?.reveal){
-    ui.innerHTML="🔮 Reveal";
-    buttons(g.players,t=>{
+  if(role==="seer"){
+    ui.innerHTML="🔮 Choose someone to reveal";
+
+    makeButtons(players, t=>{
+      alert(players[t].role.includes("wolf") ? "🐺 WEREWOLF" : "🙂 NOT WOLF");
       db.ref(`games/${gameId}/actions/reveal`).set(t);
-      alert(g.players[t].role.includes("wolf")?"🐺":"🙂");
-      ui.innerHTML="✅ Done";
-    },n=>n!==myName);
+      ui.innerHTML="✅ Revealed";
+    }, n=>n!==myName && players[n].alive);
   }
 }
 
