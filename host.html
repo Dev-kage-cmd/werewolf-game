@@ -277,7 +277,7 @@ async function runNight(){
   db.ref(`games/${gameId}/wolfVotes`).set({});
   db.ref(`games/${gameId}/actions`).set({});
 
-  await delay(2000);
+  await delay(10000);
 
   const wolves = alive().filter(([_,p])=>p.role.includes("wolf"));
 
@@ -347,7 +347,7 @@ async function runDay(){
   stopNightLoop();
   playRandom(audio.morning);
 
-  let t = 60;
+  let t = 90;
 
   clearInterval(dayInterval); // 👈 IMPORTANT
 
