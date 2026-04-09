@@ -19,6 +19,11 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <div class="card"><div id="roles"></div></div>
 
 <div class="card">
+  <h2>👥 Players</h2>
+  <div id="playerList"></div>
+</div>
+
+<div class="card">
 <button onclick="createGame()">Create Game</button>
 <button onclick="startGame()">Start</button>
 </div>
@@ -32,6 +37,7 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <div id="game" style="display:none;">
 <div id="phaseIcon" class="big">🌙</div>
 <div id="timer" class="timer"></div>
+<div id="voteCounter" style="margin-top:20px;"></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -70,16 +76,17 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // ===== GAME =====
-const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
-let roleCounts={}, gameId="", gameData={};
+const rolesDiv = document.getElementById("roles"); // <-- ADD THIS
 
 roles.forEach(r=>{
   roleCounts[r]=0;
+
   let div=document.createElement("div");
   div.innerHTML=`${r}
   <button onclick="change('${r}',-1)">-</button>
   <span id="${r}">0</span>
   <button onclick="change('${r}',1)">+</button>`;
+
   rolesDiv.appendChild(div);
 });
 
@@ -110,7 +117,12 @@ function createGame(){
 }
 
 function listen(){
-  db.ref("games/"+gameId).on("value", snap=> gameData=snap.val());
+  db.ref("games/"+gameId).on("value", snap=>{
+    gameData = snap.val();
+
+    updatePlayerList();
+    updateVoteCounter(); // 👈 ADD THIS
+  });
 }
 
 function assignRoles(){
@@ -135,6 +147,17 @@ function checkAllReady(){
 }
 
 function startGame(){
+
+  if(!gameData || !gameData.players){
+    alert("Game not ready yet (wait 1–2 seconds after creating)");
+    return;
+  }
+
+  if(Object.keys(gameData.players).length === 0){
+    alert("No players joined!");
+    return;
+  }
+
   assignRoles();
   play(audio.start);
 
@@ -142,8 +165,8 @@ function startGame(){
     if(checkAllReady()){
       clearInterval(wait);
 
-      setup.style.display="none";
-      game.style.display="block";
+      document.getElementById("setup").style.display="none";
+      document.getElementById("game").style.display="block";
 
       runNight();
     }
@@ -293,6 +316,104 @@ function checkWin(){
 function end(msg){
   db.ref(`games/${gameId}`).update({ended:true,winner:msg});
   alert(msg);
+}
+
+function updatePlayerList(){
+  const el = document.getElementById("playerList");
+
+  if(!gameData || !gameData.players){
+    el.innerHTML = "No players yet...";
+    return;
+  }
+
+  let html = "";
+
+  Object.entries(gameData.players).forEach(([name, p])=>{
+    let status = "";
+
+    if(p.alive === false){
+      status = "💀 Dead";
+    } else if(p.ready){
+      status = "✅ Ready";
+    } else {
+      status = "⏳ Not Ready";
+    }
+
+    html += `
+      <div style="
+        background:#2a2a3d;
+        margin:6px;
+        padding:10px;
+        border-radius:10px;
+        display:flex;
+        justify-content:space-between;
+      ">
+        <span>${name}</span>
+        <span>${status}</span>
+      </div>
+    `;
+  });
+
+  el.innerHTML = html;
+}
+
+function updateVoteCounter(){
+  const el = document.getElementById("voteCounter");
+
+  if(!gameData || gameData.phase !== "day"){
+    el.innerHTML = "";
+    return;
+  }
+
+  const votes = gameData.votes || {};
+  const count = {};
+
+  // Count votes (no names shown)
+  Object.values(votes).forEach(v=>{
+    count[v] = (count[v] || 0) + 1;
+  });
+
+  let html = "<h2>🗳️ Votes</h2>";
+
+  // Show alive players only
+  Object.entries(gameData.players).forEach(([name, p])=>{
+    if(!p.alive) return;
+
+    const c = count[name] || 0;
+
+    html += `
+      <div style="
+        background:#2a2a3d;
+        margin:6px;
+        padding:10px;
+        border-radius:10px;
+        display:flex;
+        justify-content:space-between;
+      ">
+        <span>${name}</span>
+        <span>${c} votes</span>
+      </div>
+    `;
+  });
+
+  // SKIP votes
+  const skip = count["SKIP"] || 0;
+
+  html += `
+    <div style="
+      background:#444;
+      margin:6px;
+      padding:10px;
+      border-radius:10px;
+      display:flex;
+      justify-content:space-between;
+    ">
+      <span>⏭ Skip</span>
+      <span>${skip} votes</span>
+    </div>
+  `;
+
+  el.innerHTML = html;
 }
 </script>
 </body>
