@@ -55,6 +55,7 @@ button { cursor:pointer; }
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
+let nightCount = 0;
 let roleCounts = {};
 let gameId = "";
 let gameData = {};
@@ -78,13 +79,19 @@ const audio = {
 };
 
 function play(src){
-  if(!gameActive()) return;
-  if(src) new Audio(src).play();
+  return new Promise(resolve=>{
+    if(!src) return resolve();
+
+    const a = new Audio(src);
+    a.onended = resolve;
+    a.onerror = resolve;
+    a.play();
+  });
 }
 
 function playRandom(arr){
-  if(!gameActive()) return;
-  if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]);
+  if(!arr.length) return Promise.resolve();
+  return play(arr[Math.floor(Math.random()*arr.length)]);
 }
 
 let nightLoopAudio = null;
@@ -255,8 +262,16 @@ function waitVotes(path,count){
 // ===== NIGHT =====
 async function runNight(){
   if(gameData.ended) return;
+
   setPhase("night");
-  playRandom(audio.night);
+
+  nightCount++;
+
+  // Only play night ambience from Night 2 onwards
+  if(nightCount >= 2){
+    playRandom(audio.night);
+  }
+  
   startNightLoop();
 
   db.ref(`games/${gameId}/wolfVotes`).set({});
@@ -268,28 +283,28 @@ async function runNight(){
 
   // Werewolves
   db.ref(`games/${gameId}/nightRole`).set("werewolf");
-  play(audio.werewolfOpen);
+  await play(audio.werewolfOpen);
   await waitWerewolfVotes();
-  play(audio.werewolfClose);
+  await play(audio.werewolfClose);
   db.ref(`games/${gameId}/nightRole`).set(null);
 
   // Doctor
-  const doc = alive().find(([_,p])=>p.role==="doctor");
+  let doc = alive().find(([_,p])=>p.role==="doctor");
   if(doc){
     db.ref(`games/${gameId}/nightRole`).set("doctor");
-    play(audio.doctorOpen);
+    await play(audio.doctorOpen);
     await waitVotes("actions/save",1);
-    play(audio.doctorClose);
+    await play(audio.doctorClose);
     db.ref(`games/${gameId}/nightRole`).set(null);
   }
 
   // Seer
-  const seer = alive().find(([_,p])=>p.role==="seer");
+  let seer = alive().find(([_,p])=>p.role==="seer");
   if(seer){
     db.ref(`games/${gameId}/nightRole`).set("seer");
-    play(audio.seerOpen);
+    await play(audio.seerOpen);
     await waitVotes("actions/reveal",1);
-    play(audio.seerClose);
+    await play(audio.seerClose);
     db.ref(`games/${gameId}/nightRole`).set(null);
   }
 
@@ -391,7 +406,7 @@ function end(type){
   gameData.ended = true;
   clearInterval(dayInterval);
   stopNightLoop();
-  
+
   let emoji="", audioSrc="";
   if(type==="villagers"){ emoji="🏡"; audioSrc=audio.villagersWin; }
   if(type==="werewolves"){ emoji="🐺"; audioSrc=audio.werewolvesWin; }
