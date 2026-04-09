@@ -45,7 +45,12 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
-window.onload = () => {
+let roleCounts = {};
+let gameId = "";
+let gameData = {};
+const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
+
+
   // ===== AUDIO (PUT MP3 LINKS) =====
 const audio = {
   start: "",
@@ -115,7 +120,7 @@ function createGame(){
   const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
 
   QRCode.toCanvas(document.getElementById("qr"), url);
-  link.innerText=url;
+  document.getElementById("link").innerText = url;
 
   listen();
 }
@@ -419,7 +424,28 @@ function updateVoteCounter(){
 
   el.innerHTML = html;
 }
-}
+
+window.onload = () => {
+    const rolesDiv = document.getElementById("roles");
+
+    // CLEAR the container first
+    rolesDiv.innerHTML = "";
+
+    roles.forEach(r => {
+        roleCounts[r] = 0;
+
+        let div = document.createElement("div");
+
+        div.innerHTML = `
+            ${r} 
+            <button onclick="change('${r}',-1)">-</button>
+            <span id="${r}">0</span>
+            <button onclick="change('${r}',1)">+</button>
+        `;
+
+        rolesDiv.appendChild(div);
+    });
+};
 </script>
 </body>
 </html>
