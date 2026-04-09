@@ -2,42 +2,44 @@
 <html>
 <head>
 <title>Host</title>
-
 <style>
 body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 .big { font-size:120px; margin-top:20vh; }
 .timer { font-size:40px; }
 .card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
+button { cursor:pointer; }
 </style>
 </head>
-
 <body>
 
 <div id="setup">
 <h1>🐺 Host</h1>
 
-<div class="card"><div id="roles"></div></div>
+<div class="card">
+  <h2>🎭 Roles</h2>
+  <div id="roles"></div>
+</div>
 
 <div class="card">
   <h2>👥 Players</h2>
-  <div id="playerList"></div>
+  <div id="playerList">No players yet...</div>
 </div>
 
 <div class="card">
-<button onclick="createGame()">Create Game</button>
-<button onclick="startGame()">Start</button>
+  <button onclick="createGame()">Create Game</button>
+  <button onclick="startGame()">Start</button>
 </div>
 
 <div class="card">
-<canvas id="qr"></canvas>
-<p id="link"></p>
+  <canvas id="qr"></canvas>
+  <p id="link"></p>
 </div>
 </div>
 
 <div id="game" style="display:none;">
-<div id="phaseIcon" class="big">🌙</div>
-<div id="timer" class="timer"></div>
-<div id="voteCounter" style="margin-top:20px;"></div>
+  <div id="phaseIcon" class="big">🌙</div>
+  <div id="timer" class="timer"></div>
+  <div id="voteCounter" style="margin-top:20px;"></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -50,8 +52,7 @@ let gameId = "";
 let gameData = {};
 const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
 
-
-  // ===== AUDIO (PUT MP3 LINKS) =====
+// ===== AUDIO (PUT MP3 LINKS) =====
 const audio = {
   start: "",
   werewolfOpen: "",
@@ -64,7 +65,7 @@ const audio = {
   night: ["","","",""]
 };
 
-function play(src){ if(src){ new Audio(src).play(); } }
+function play(src){ if(src) new Audio(src).play(); }
 function playRandom(arr){ if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]); }
 
 // ===== FIREBASE =====
@@ -73,7 +74,7 @@ const firebaseConfig = {
   authDomain: "werewolf-10fbd.firebaseapp.com",
   databaseURL: "https://werewolf-10fbd-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "werewolf-10fbd",
-  storageBucket: "werewolf-10fbd.firebasestorage.app",
+  storageBucket: "werewolf-10fbd.appspot.com",
   messagingSenderId: "220925987615",
   appId: "1:220925987615:web:444dec6d8370373cd6be2a",
   measurementId: "G-L7ZG6JK23Z"
@@ -81,32 +82,28 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ===== GAME =====
+// ===== ROLES UI =====
 const rolesDiv = document.getElementById("roles");
-
 roles.forEach(r=>{
   roleCounts[r] = 0;
-
-  let div = document.createElement("div");
-
+  const div = document.createElement("div");
   div.innerHTML = `
-    ${r}
+    ${r} 
     <button onclick="change('${r}',-1)">-</button>
     <span id="${r}">0</span>
     <button onclick="change('${r}',1)">+</button>
   `;
-
   rolesDiv.appendChild(div);
 });
 
 function change(r,a){
-  roleCounts[r]=Math.max(0,roleCounts[r]+a);
-  document.getElementById(r).innerText=roleCounts[r];
+  roleCounts[r] = Math.max(0,(roleCounts[r]||0)+a);
+  document.getElementById(r).innerText = roleCounts[r];
 }
 
+// ===== CREATE GAME =====
 function createGame(){
-  gameId=Math.random().toString(36).substr(2,6);
-
+  gameId = Math.random().toString(36).substr(2,6);
   db.ref("games/"+gameId).set({
     roles:roleCounts,
     players:{},
@@ -114,11 +111,11 @@ function createGame(){
     votes:{},
     wolfVotes:{},
     actions:{},
+    nightRole:null,
     ended:false
   });
 
   const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
-
   QRCode.toCanvas(document.getElementById("qr"), url);
   document.getElementById("link").innerText = url;
 
@@ -128,20 +125,20 @@ function createGame(){
 function listen(){
   db.ref("games/"+gameId).on("value", snap=>{
     gameData = snap.val();
-
     updatePlayerList();
-    updateVoteCounter(); // 👈 ADD THIS
+    updateVoteCounter();
   });
 }
 
+// ===== ASSIGN ROLES =====
 function assignRoles(){
-  let pool=[];
+  let pool = [];
   for(let r in roleCounts){
     for(let i=0;i<roleCounts[r];i++) pool.push(r);
   }
 
   Object.keys(gameData.players).forEach(name=>{
-    let role=pool.splice(Math.random()*pool.length|0,1)[0]||"villager";
+    let role = pool.splice(Math.random()*pool.length|0,1)[0] || "villager";
     db.ref(`games/${gameId}/players/${name}`).update({
       role,
       alive:true,
@@ -151,17 +148,16 @@ function assignRoles(){
 }
 
 function checkAllReady(){
-  let p=Object.values(gameData.players||{});
+  const p = Object.values(gameData.players||{});
   return p.length && p.every(x=>x.ready);
 }
 
+// ===== START GAME =====
 function startGame(){
-
   if(!gameData || !gameData.players){
     alert("Game not ready yet (wait 1–2 seconds after creating)");
     return;
   }
-
   if(Object.keys(gameData.players).length === 0){
     alert("No players joined!");
     return;
@@ -170,33 +166,30 @@ function startGame(){
   assignRoles();
   play(audio.start);
 
-  let wait=setInterval(()=>{
+  const wait = setInterval(()=>{
     if(checkAllReady()){
       clearInterval(wait);
-
       document.getElementById("setup").style.display="none";
       document.getElementById("game").style.display="block";
-
       runNight();
     }
   },1000);
 }
 
+// ===== PHASE =====
 function setPhase(p){
-  db.ref("games/"+gameId+"/phase").set(p);
-  phaseIcon.innerText = p==="night"?"🌙":"☀️";
-  timer.innerText="";
+  db.ref(`games/${gameId}/phase`).set(p);
+  document.getElementById("phaseIcon").innerText = p==="night"?"🌙":"☀️";
+  document.getElementById("timer").innerText="";
 }
 
 function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-function alive(){ return Object.entries(gameData.players).filter(([_,p])=>p.alive); }
-
+function alive(){ return Object.entries(gameData.players||{}).filter(([_,p])=>p.alive); }
 function waitVotes(path,count){
   return new Promise(resolve=>{
     db.ref(`games/${gameId}/${path}`).on("value", snap=>{
-      let d=snap.val()||{};
-      if(Object.keys(d).length>=count) resolve();
+      const d = snap.val()||{};
+      if(Object.keys(d).length >= count) resolve();
     });
   });
 }
@@ -211,17 +204,17 @@ async function runNight(){
 
   await delay(2000);
 
-  let wolves = alive().filter(([_,p])=>p.role.includes("wolf"));
+  const wolves = alive().filter(([_,p])=>p.role.includes("wolf"));
 
-  // === Werewolves Turn ===
+  // Werewolves
   db.ref(`games/${gameId}/nightRole`).set("werewolf");
   play(audio.werewolfOpen);
   await waitVotes("wolfVotes", wolves.length);
   play(audio.werewolfClose);
   db.ref(`games/${gameId}/nightRole`).set(null);
 
-  // === Doctor Turn ===
-  let doc = alive().find(([_,p])=>p.role==="doctor");
+  // Doctor
+  const doc = alive().find(([_,p])=>p.role==="doctor");
   if(doc){
     db.ref(`games/${gameId}/nightRole`).set("doctor");
     play(audio.doctorOpen);
@@ -230,8 +223,8 @@ async function runNight(){
     db.ref(`games/${gameId}/nightRole`).set(null);
   }
 
-  // === Seer Turn ===
-  let seer = alive().find(([_,p])=>p.role==="seer");
+  // Seer
+  const seer = alive().find(([_,p])=>p.role==="seer");
   if(seer){
     db.ref(`games/${gameId}/nightRole`).set("seer");
     play(audio.seerOpen);
@@ -243,32 +236,25 @@ async function runNight(){
   resolveNight();
 }
 
+// ===== RESOLVE NIGHT =====
 function resolveNight(){
-  let votes=gameData.wolfVotes||{}, count={};
-
+  const votes = gameData.wolfVotes||{}, count={};
   Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
+  const target = Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
+  const save = gameData.actions?.save;
 
-  let target=Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
-  let save=gameData.actions?.save;
-
-  if(target && target!==save){
-    kill(target);
-  }
-
+  if(target && target!==save) kill(target);
   if(checkWin()) return;
-
   runDay();
 }
 
 function kill(name){
-  let p=gameData.players[name];
-
+  const p = gameData.players[name];
+  if(!p) return;
   if(p.role==="alpha" && p.lives>1){
     db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
-    play(audio.hurt);
     return;
   }
-
   db.ref(`games/${gameId}/players/${name}/alive`).set(false);
 }
 
@@ -277,13 +263,11 @@ async function runDay(){
   setPhase("day");
   playRandom(audio.morning);
 
-  let t=60;
-
-  let int=setInterval(()=>{
-    timer.innerText="Time: "+t;
-
-    let aliveP=alive().map(([n])=>n);
-    let votes=gameData.votes||{};
+  let t = 60;
+  const int = setInterval(()=>{
+    document.getElementById("timer").innerText="Time: "+t;
+    const aliveP = alive().map(([n])=>n);
+    const votes = gameData.votes||{};
 
     if(Object.keys(votes).length>=aliveP.length){
       clearInterval(int);
@@ -295,39 +279,29 @@ async function runDay(){
       clearInterval(int);
       countVotes();
     }
-
   },1000);
 }
 
 function countVotes(){
-  let votes=gameData.votes||{}, count={};
-
+  const votes = gameData.votes||{}, count={};
   Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
-
-  let winner=Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
+  const winner = Object.keys(count).reduce((a,b)=>count[a]>count[b]?a:b,null);
 
   if(winner && winner!=="SKIP"){
     kill(winner);
-
-    if(gameData.players[winner].role==="jester"){
-      return end("Jester wins!");
-    }
+    if(gameData.players[winner].role==="jester") return end("Jester wins!");
   }
 
   db.ref(`games/${gameId}/votes`).set({});
-
   if(checkWin()) return;
-
   runNight();
 }
 
 function checkWin(){
-  let a=alive().map(([_,p])=>p);
-  let wolves=a.filter(p=>p.role.includes("wolf")).length;
-
+  const a = alive().map(([_,p])=>p);
+  const wolves = a.filter(p=>p.role.includes("wolf")).length;
   if(wolves===0) return end("Villagers win!");
   if(wolves>=a.length-wolves) return end("Werewolves win!");
-
   return false;
 }
 
@@ -336,125 +310,42 @@ function end(msg){
   alert(msg);
 }
 
+// ===== UI UPDATES =====
 function updatePlayerList(){
   const el = document.getElementById("playerList");
-
-  if(!gameData || !gameData.players){
-    el.innerHTML = "No players yet...";
-    return;
-  }
+  if(!gameData || !gameData.players){ el.innerHTML="No players yet..."; return; }
 
   let html = "";
-
-  Object.entries(gameData.players).forEach(([name, p])=>{
-    let status = "";
-
-    if(p.alive === false){
-      status = "💀 Dead";
-    } else if(p.ready){
-      status = "✅ Ready";
-    } else {
-      status = "⏳ Not Ready";
-    }
-
-    html += `
-      <div style="
-        background:#2a2a3d;
-        margin:6px;
-        padding:10px;
-        border-radius:10px;
-        display:flex;
-        justify-content:space-between;
-      ">
-        <span>${name}</span>
-        <span>${status}</span>
-      </div>
-    `;
+  Object.entries(gameData.players).forEach(([name,p])=>{
+    const status = !p.alive ? "💀 Dead" : p.ready ? "✅ Ready" : "⏳ Not Ready";
+    html += `<div style="background:#2a2a3d;margin:6px;padding:10px;border-radius:10px;display:flex;justify-content:space-between;">
+      <span>${name}</span><span>${status}</span>
+    </div>`;
   });
-
   el.innerHTML = html;
 }
 
 function updateVoteCounter(){
   const el = document.getElementById("voteCounter");
+  if(!gameData || gameData.phase !== "day"){ el.innerHTML=""; return; }
 
-  if(!gameData || gameData.phase !== "day"){
-    el.innerHTML = "";
-    return;
-  }
-
-  const votes = gameData.votes || {};
-  const count = {};
-
-  // Count votes (no names shown)
-  Object.values(votes).forEach(v=>{
-    count[v] = (count[v] || 0) + 1;
-  });
+  const votes = gameData.votes||{}, count={};
+  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
 
   let html = "<h2>🗳️ Votes</h2>";
-
-  // Show alive players only
-  Object.entries(gameData.players).forEach(([name, p])=>{
+  Object.entries(gameData.players).forEach(([name,p])=>{
     if(!p.alive) return;
-
-    const c = count[name] || 0;
-
-    html += `
-      <div style="
-        background:#2a2a3d;
-        margin:6px;
-        padding:10px;
-        border-radius:10px;
-        display:flex;
-        justify-content:space-between;
-      ">
-        <span>${name}</span>
-        <span>${c} votes</span>
-      </div>
-    `;
+    html += `<div style="background:#2a2a3d;margin:6px;padding:10px;border-radius:10px;display:flex;justify-content:space-between;">
+      <span>${name}</span><span>${count[name]||0} votes</span>
+    </div>`;
   });
 
-  // SKIP votes
-  const skip = count["SKIP"] || 0;
-
-  html += `
-    <div style="
-      background:#444;
-      margin:6px;
-      padding:10px;
-      border-radius:10px;
-      display:flex;
-      justify-content:space-between;
-    ">
-      <span>⏭ Skip</span>
-      <span>${skip} votes</span>
-    </div>
-  `;
-
+  const skip = count["SKIP"]||0;
+  html += `<div style="background:#444;margin:6px;padding:10px;border-radius:10px;display:flex;justify-content:space-between;">
+    <span>⏭ Skip</span><span>${skip} votes</span>
+  </div>`;
   el.innerHTML = html;
 }
-
-window.onload = () => {
-    const rolesDiv = document.getElementById("roles");
-
-    // CLEAR the container first
-    rolesDiv.innerHTML = "";
-
-    roles.forEach(r => {
-        roleCounts[r] = 0;
-
-        let div = document.createElement("div");
-
-        div.innerHTML = `
-            ${r} 
-            <button onclick="change('${r}',-1)">-</button>
-            <span id="${r}">0</span>
-            <button onclick="change('${r}',1)">+</button>
-        `;
-
-        rolesDiv.appendChild(div);
-    });
-};
 </script>
 </body>
 </html>
