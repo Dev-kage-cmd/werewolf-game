@@ -5,45 +5,42 @@
 
 <style>
 body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
-
-.big {
-  font-size:120px;
-  margin-top:20vh;
-}
-
-.timer {
-  font-size:40px;
-}
-
-.card {
-  background:#1c1c2b;
-  margin:15px;
-  padding:20px;
-  border-radius:20px;
-}
+.big { font-size:120px; margin-top:20vh; }
+.timer { font-size:40px; }
+.card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
+input { margin:5px; }
 </style>
 </head>
 
 <body>
 
-<div id="setup">
-
 <h1>🐺 Host</h1>
 
 <div class="card">
-<div id="roles"></div>
+<h3>🎧 Upload Voice Lines</h3>
+Start: <input type="file" id="startAudio"><br>
+Night: <input type="file" id="nightAudio"><br>
+
+Wolf Open: <input type="file" id="wolfOpen"><br>
+Wolf Close: <input type="file" id="wolfClose"><br>
+
+Doctor Open: <input type="file" id="docOpen"><br>
+Doctor Close: <input type="file" id="docClose"><br>
+
+Seer Open: <input type="file" id="seerOpen"><br>
+Seer Close: <input type="file" id="seerClose"><br>
+
+Morning 1-4:
+<input type="file" class="morning"><input type="file" class="morning"><input type="file" class="morning"><input type="file" class="morning"><br>
+
+Evening 1-4:
+<input type="file" class="evening"><input type="file" class="evening"><input type="file" class="evening"><input type="file" class="evening"><br>
 </div>
 
 <div class="card">
 <button onclick="createGame()">Create Game</button>
 <button onclick="startGame()">Start</button>
-</div>
-
-<div class="card">
-<canvas id="qr"></canvas>
 <p id="link"></p>
-</div>
-
 </div>
 
 <div id="game" style="display:none;">
@@ -53,7 +50,6 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -63,98 +59,128 @@ const firebaseConfig = {
   projectId: "werewolf-10fbd",
   storageBucket: "werewolf-10fbd.firebasestorage.app",
   messagingSenderId: "220925987615",
-  appId: "1:220925987615:web:444dec6d8370373cd6be2a",
-  measurementId: "G-L7ZG6JK23Z"
+  appId: "1:220925987615:web:444dec6d8370373cd6be2a"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
-let roleCounts={}, gameId="", gameData={};
-
-roles.forEach(r=>{
-  roleCounts[r]=0;
-  let div=document.createElement("div");
-  div.innerHTML=`${r}
-  <button onclick="change('${r}',-1)">-</button>
-  <span id="${r}">0</span>
-  <button onclick="change('${r}',1)">+</button>`;
-  document.getElementById("roles").appendChild(div);
-});
-
-function change(r,a){
-  roleCounts[r]=Math.max(0,roleCounts[r]+a);
-  document.getElementById(r).innerText=roleCounts[r];
-}
+let gameId="";
+let gameData={};
 
 function createGame(){
   gameId=Math.random().toString(36).substr(2,6);
 
   db.ref("games/"+gameId).set({
-    roles:roleCounts,
     players:{},
     phase:"lobby",
-    votes:{},
     wolfVotes:{},
     actions:{},
-    ended:false
+    votes:{}
   });
 
-  const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
-
-  QRCode.toCanvas(document.getElementById("qr"), url);
-  document.getElementById("link").innerText = url;
+  const url="https://dev-kage-cmd.github.io/werewolf-game/player.html?game="+gameId;
+  document.getElementById("link").innerText=url;
 
   listen();
 }
 
 function listen(){
-  db.ref("games/"+gameId).on("value", snap=>{
+  db.ref("games/"+gameId).on("value",snap=>{
     gameData=snap.val();
   });
 }
 
-function checkAllReady(){
-  if(!gameData.players) return false;
+function play(file){
+  if(file.files[0]){
+    let audio=new Audio(URL.createObjectURL(file.files[0]));
+    audio.play();
+  }
+}
 
-  const players = Object.values(gameData.players);
-
-  if(players.length === 0) return false;
-
-  return players.every(p => p.ready === true);
+function randomPlay(className){
+  let files=document.querySelectorAll("."+className);
+  let arr=[...files].filter(f=>f.files[0]);
+  if(arr.length){
+    let pick=arr[Math.floor(Math.random()*arr.length)];
+    play(pick);
+  }
 }
 
 function startGame(){
-  assignRoles();
-  speak("Roles assigned. Press ready on your device");
+  document.getElementById("game").style.display="block";
 
-  // Wait loop
-  const interval = setInterval(()=>{
-    if(checkAllReady()){
-      clearInterval(interval);
+  play(document.getElementById("startAudio"));
 
-      speak("Everyone is ready. The game is starting");
-
-      document.getElementById("setup").style.display="none";
-      document.getElementById("game").style.display="block";
-
-      setPhase("night");
-      runNight();
-    }
-  },1000);
+  setTimeout(runNight,2000);
 }
 
-function assignRoles(){
-  let pool=[];
-  for(let r in roleCounts){
-    for(let i=0;i<roleCounts[r];i++) pool.push(r);
-  }
-
-  Object.keys(gameData.players).forEach(name=>{
-    let role=pool.splice(Math.floor(Math.random()*pool.length),1)[0]||"villager";
-    let extra = (role==="alpha") ? {lives:2} : {};
-    db.ref(`games/${gameId}/players/${name}`).update({role,...extra});
+async function waitFor(path,count){
+  return new Promise(resolve=>{
+    const ref=db.ref(path);
+    const check=setInterval(async ()=>{
+      let snap=await ref.once("value");
+      let val=snap.val()||{};
+      if(Object.keys(val).length>=count){
+        clearInterval(check);
+        resolve(val);
+      }
+    },500);
   });
+}
+
+async function runNight(){
+  setPhase("night");
+
+  play(document.getElementById("nightAudio"));
+
+  await sleep(2000);
+
+  // WEREWOLVES
+  play(document.getElementById("wolfOpen"));
+
+  let wolves=Object.values(gameData.players).filter(p=>p.role==="werewolf"||p.role==="alpha" && p.alive).length;
+  await waitFor(`games/${gameId}/wolfVotes`,wolves);
+
+  play(document.getElementById("wolfClose"));
+
+  // DOCTOR
+  play(document.getElementById("docOpen"));
+  await waitFor(`games/${gameId}/actions`,1);
+  play(document.getElementById("docClose"));
+
+  // SEER
+  play(document.getElementById("seerOpen"));
+  await waitFor(`games/${gameId}/seer`,1);
+  play(document.getElementById("seerClose"));
+
+  resolveNight();
+}
+
+function resolveNight(){
+  randomPlay("morning");
+  setPhase("day");
+  runDay();
+}
+
+function runDay(){
+  let t=60;
+  let timer=document.getElementById("timer");
+
+  let int=setInterval(()=>{
+    timer.innerText=t;
+    t--;
+
+    let alive=Object.keys(gameData.players).filter(p=>gameData.players[p].alive);
+    let votes=gameData.votes||{};
+
+    if(Object.keys(votes).length>=alive.length || t<=0){
+      clearInterval(int);
+      randomPlay("evening");
+      runNight();
+    }
+
+  },1000);
 }
 
 function setPhase(p){
@@ -162,152 +188,7 @@ function setPhase(p){
   document.getElementById("phaseIcon").innerText = p==="night" ? "🌙" : "☀️";
 }
 
-function speak(t){
-  speechSynthesis.speak(new SpeechSynthesisUtterance(t));
-}
-
-function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-async function runNight(){
-  db.ref("games/"+gameId+"/wolfVotes").set({});
-  db.ref("games/"+gameId+"/actions").set({});
-
-  speak("Everyone close your eyes");
-
-  await delay(2000);
-  speak("Werewolves open your eyes and choose who to kill");
-  await delay(15000);
-  speak("Werewolves close your eyes");
-  await delay(3000)
-  speak("Doctor open your eyes and choose who to save");
-  await delay(10000);
-  speak("Doctor close your eyes");
-  await delay(3000)
-  speak("Seer open your eyes and choose who to reveal");
-  await delay(10000);
-  speak("Seer close your eyes");
-  await delay(3000)
-  resolveNight();
-}
-
-function resolveNight(){
-  db.ref("games/"+gameId).once("value", snap=>{
-    const g=snap.val();
-    let wolfVotes=g.wolfVotes||{}, count={};
-
-    Object.values(wolfVotes).forEach(v=>count[v]=(count[v]||0)+1);
-
-    let max=0,target=null;
-    for(let p in count){
-      if(count[p]>max){max=count[p]; target=p;}
-    }
-
-    let save=g.actions?.save;
-
-    if(target && target!==save){
-      killPlayer(target);
-      speak(target+" died");
-    } else speak("No one died");
-
-    if(checkWin()) return;
-
-    setPhase("day");
-    runDay();
-  });
-}
-
-function killPlayer(name){
-  let p=gameData.players[name];
-
-  if(p.role==="alpha"){
-    if(p.lives>1){
-      db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
-      speak("The alpha wolf is hurt");
-      return;
-    }
-  }
-
-  db.ref(`games/${gameId}/players/${name}/alive`).set(false);
-}
-
-async function runDay(){
-  let t=60;
-  let el=document.getElementById("timer");
-
-  let int=setInterval(()=>{
-    el.innerText="Time: "+t;
-    t--;
-
-    checkAllVotes();
-
-    if(t<0){
-      clearInterval(int);
-      countVotes();
-    }
-  },1000);
-}
-
-function checkAllVotes(){
-  let alive=Object.keys(gameData.players).filter(p=>gameData.players[p].alive);
-  let votes=gameData.votes||{};
-  if(Object.keys(votes).length>=alive.length){
-    countVotes();
-  }
-}
-
-function countVotes(){
-  let votes=gameData.votes||{}, count={};
-
-  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
-
-  let max=0,winners=[];
-  for(let p in count){
-    if(count[p]>max){max=count[p]; winners=[p];}
-    else if(count[p]===max) winners.push(p);
-  }
-
-  if(winners.length>1||winners[0]==="SKIP"){
-    speak("No one eliminated");
-  } else {
-    killPlayer(winners[0]);
-    speak(winners[0]+" eliminated");
-
-    if(gameData.players[winners[0]].role==="jester"){
-      return endGame("Jester wins!");
-    }
-  }
-
-  db.ref("games/"+gameId+"/votes").set({});
-
-  if(checkWin()) return;
-
-  setPhase("night");
-  runNight();
-}
-
-function checkWin(){
-  let alive=Object.values(gameData.players).filter(p=>p.alive);
-
-  let wolves=alive.filter(p=>p.role==="werewolf"||p.role==="alpha").length;
-  let others=alive.length-wolves;
-
-  if(wolves===0){
-    endGame("Villagers win!");
-    return true;
-  }
-
-  if(wolves>=others){
-    endGame("Werewolves win!");
-    return true;
-  }
-
-  return false;
-}
-
-function endGame(msg){
-  speak(msg);
-  db.ref("games/"+gameId).update({ended:true,winner:msg});
-}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 </script>
 
 </body>
