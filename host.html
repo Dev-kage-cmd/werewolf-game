@@ -8,6 +8,9 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 .timer { font-size:40px; }
 .card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
 button { cursor:pointer; }
+#endScreen { display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:#0f0f1a; color:white; text-align:center; font-family:Arial; justify-content:center; align-items:center; flex-direction:column; }
+#endScreen h1 { font-size:80px; }
+#endScreen h2 { font-size:40px; }
 </style>
 </head>
 <body>
@@ -42,6 +45,11 @@ button { cursor:pointer; }
   <div id="voteCounter" style="margin-top:20px;"></div>
 </div>
 
+<div id="endScreen" class="flex">
+  <h1 id="endEmoji"></h1>
+  <h2 id="endText"></h2>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
@@ -50,23 +58,50 @@ button { cursor:pointer; }
 let roleCounts = {};
 let gameId = "";
 let gameData = {};
-const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
+const roles = ["werewolf","villager","seer","doctor","hunter","jester"];
 
 // ===== AUDIO (PUT MP3 LINKS) =====
 const audio = {
-  start: "",
-  werewolfOpen: "",
-  werewolfClose: "",
-  doctorOpen: "",
-  doctorClose: "",
-  seerOpen: "",
-  seerClose: "",
-  morning: ["","","",""],
-  night: ["","","",""]
+  start: "Start.mp3",
+  werewolfOpen: "WerewolfOpen.mp3",
+  werewolfClose: "WerewolfClose.mp3",
+  doctorOpen: "DoctorOpen.mp3",
+  doctorClose: "DoctorClose.mp3",
+  seerOpen: "SeerOpen.mp3",
+  seerClose: "SeerClose.mp3",
+  morning: ["Morning1.mp3","Morning2.mp3","Morning3.mp3","Morning4.mp3"],
+  night: ["Night1.mp3","Night2.mp3"],
+  villagersWin: "VillagersWin.mp3", // 🏡 villagers
+  werewolvesWin: "WerewolvesWin.mp3", // 🐺 werewolves
+  jesterWin: "JesterWin.mp3", // 🤡 jester
+  NightSFX: "NightSFX.mp3"
 };
 
 function play(src){ if(src) new Audio(src).play(); }
 function playRandom(arr){ if(arr.length) play(arr[Math.floor(Math.random()*arr.length)]); }
+
+let nightLoopAudio = null;
+
+function startNightLoop(){
+  if(!audio.NightSFX) return;
+
+  if(nightLoopAudio){
+    nightLoopAudio.pause();
+  }
+
+  nightLoopAudio = new Audio(audio.NightSFX);
+  nightLoopAudio.loop = true;
+  nightLoopAudio.volume = 0.5; // optional
+  nightLoopAudio.play();
+}
+
+function stopNightLoop(){
+  if(nightLoopAudio){
+    nightLoopAudio.pause();
+    nightLoopAudio.currentTime = 0;
+    nightLoopAudio = null;
+  }
+}
 
 // ===== FIREBASE =====
 const firebaseConfig = {
@@ -142,7 +177,7 @@ function assignRoles(){
     db.ref(`games/${gameId}/players/${name}`).update({
       role,
       alive:true,
-      lives: role==="alpha"?2:1
+      lives:1
     });
   });
 }
@@ -185,6 +220,18 @@ function setPhase(p){
 
 function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function alive(){ return Object.entries(gameData.players||{}).filter(([_,p])=>p.alive); }
+
+// ===== WAIT ALL WEREWOLVES =====
+function waitWerewolfVotes(){
+  return new Promise(resolve=>{
+    db.ref(`games/${gameId}/wolfVotes`).on("value", snap=>{
+      const votes = snap.val()||{};
+      const aliveWolves = alive().filter(([_,p])=>p.role.includes("wolf"));
+      if(Object.keys(votes).length >= aliveWolves.length) resolve();
+    });
+  });
+}
+
 function waitVotes(path,count){
   return new Promise(resolve=>{
     db.ref(`games/${gameId}/${path}`).on("value", snap=>{
@@ -198,6 +245,7 @@ function waitVotes(path,count){
 async function runNight(){
   setPhase("night");
   playRandom(audio.night);
+  startNightLoop();
 
   db.ref(`games/${gameId}/wolfVotes`).set({});
   db.ref(`games/${gameId}/actions`).set({});
@@ -209,7 +257,7 @@ async function runNight(){
   // Werewolves
   db.ref(`games/${gameId}/nightRole`).set("werewolf");
   play(audio.werewolfOpen);
-  await waitVotes("wolfVotes", wolves.length);
+  await waitWerewolfVotes();
   play(audio.werewolfClose);
   db.ref(`games/${gameId}/nightRole`).set(null);
 
@@ -251,16 +299,13 @@ function resolveNight(){
 function kill(name){
   const p = gameData.players[name];
   if(!p) return;
-  if(p.role==="alpha" && p.lives>1){
-    db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
-    return;
-  }
   db.ref(`games/${gameId}/players/${name}/alive`).set(false);
 }
 
 // ===== DAY =====
 async function runDay(){
   setPhase("day");
+  stopNightLoop()
   playRandom(audio.morning);
 
   let t = 60;
@@ -289,7 +334,7 @@ function countVotes(){
 
   if(winner && winner!=="SKIP"){
     kill(winner);
-    if(gameData.players[winner].role==="jester") return end("Jester wins!");
+    if(gameData.players[winner].role==="jester") return end("jester");
   }
 
   db.ref(`games/${gameId}/votes`).set({});
@@ -297,17 +342,29 @@ function countVotes(){
   runNight();
 }
 
+// ===== CHECK WIN =====
 function checkWin(){
   const a = alive().map(([_,p])=>p);
   const wolves = a.filter(p=>p.role.includes("wolf")).length;
-  if(wolves===0) return end("Villagers win!");
-  if(wolves>=a.length-wolves) return end("Werewolves win!");
+
+  if(wolves===0) return end("villagers");
+  if(wolves>=a.length-wolves) return end("werewolves");
   return false;
 }
 
-function end(msg){
-  db.ref(`games/${gameId}`).update({ended:true,winner:msg});
-  alert(msg);
+// ===== END GAME SCREEN =====
+function end(type){
+  let emoji="", audioSrc="";
+  if(type==="villagers"){ emoji="🏡"; audioSrc=audio.villagersWin; }
+  if(type==="werewolves"){ emoji="🐺"; audioSrc=audio.werewolvesWin; }
+  if(type==="jester"){ emoji="🤡"; audioSrc=audio.jesterWin; }
+
+  document.getElementById("endEmoji").innerText = emoji;
+  document.getElementById("endText").innerText = type.charAt(0).toUpperCase()+type.slice(1)+" win!";
+  document.getElementById("game").style.display="none";
+  document.getElementById("endScreen").style.display="flex";
+
+  play(audioSrc);
 }
 
 // ===== UI UPDATES =====
