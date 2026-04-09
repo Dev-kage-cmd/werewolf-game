@@ -2,10 +2,13 @@
 <html>
 <head>
 <title>Player</title>
+
 <style>
-body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
+body { background:#0f0f1a; color:white; font-family:Arial; text-align:center; }
 .card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
 button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px; width:90%; border-radius:10px; }
+.glow { color:#ffeaa7; text-shadow:0 0 10px #ffeaa7; }
+.dead { opacity:0.5; }
 </style>
 </head>
 
@@ -16,6 +19,10 @@ button { background:#6c5ce7; color:white; border:none; padding:12px; margin:6px;
 <div class="card">
 <input id="name" placeholder="Name">
 <button onclick="join()">Join</button>
+</div>
+
+<div class="card">
+<h2 id="role" class="glow"></h2>
 </div>
 
 <div class="card" id="ui"></div>
@@ -39,98 +46,128 @@ const db = firebase.database();
 
 const gameId=new URLSearchParams(location.search).get("game");
 let myName="";
+let roleShown=false;
 
 function join(){
   myName=document.getElementById("name").value;
+  if(!myName) return alert("Enter a name");
 
-  document.getElementById("ui").innerHTML="⏳ Joining...";
+  document.querySelector(".card").innerHTML = "⏳ Joining...";
 
   db.ref(`games/${gameId}/players/${myName}`).set({
-    alive:true,
-    ready:true
+    alive: true,
+    ready: false
   });
 }
 
+function showRole(role){
+  const ui = document.getElementById("ui");
+
+  ui.innerHTML = `
+    <h2>Your role is:</h2>
+    <h1>${role}</h1>
+    <button id="readyBtn">✅ Ready</button>
+  `;
+
+  document.getElementById("readyBtn").onclick = ()=>{
+    db.ref(`games/${gameId}/players/${myName}/ready`).set(true);
+    ui.innerHTML = "⏳ Waiting for other players...";
+  };
+}
+
 db.ref("games/"+gameId).on("value", snap=>{
-  const g=snap.val();
-  if(!g || !g.players || !g.players[myName]) return;
+  const game = snap.val();
+  if(!game || !game.players || !game.players[myName]) return;
 
-  const me=g.players[myName];
+  const me = game.players[myName];
 
-  if(!me.alive){
-    ui.innerHTML="💀 You are dead";
+  // DEAD UI
+  if(me.alive === false){
+    document.getElementById("ui").innerHTML = "💀 You are dead";
     return;
   }
 
-  if(g.phase==="night"){
-    if(g.activeRole==="werewolf" && (me.role==="werewolf"||me.role==="alpha")){
-      showWolf(g.players);
+  // SHOW ROLE ONCE until ready
+  if(me.role && !me.ready){
+    if(!roleShown){
+      showRole(me.role);
+      roleShown = true;
     }
-    else if(g.activeRole==="doctor" && me.role==="doctor"){
-      showDoctor(g.players);
-    }
-    else if(g.activeRole==="seer" && me.role==="seer"){
-      showSeer(g.players);
-    }
-    else{
-      ui.innerHTML="😴 Sleep...";
-    }
+    return;
   }
 
-  if(g.phase==="day"){
-    showVote(g.players);
-  }
+  // AFTER READY → GAMEPLAY
+  if(game.phase === "night") nightUI(me.role, game.players, game);
+  if(game.phase === "day") voteUI(game.players);
 });
 
-function showWolf(players){
-  ui.innerHTML="🐺 Choose target";
+function nightUI(role, players, game){
+  let ui=document.getElementById("ui");
+  ui.innerHTML="🌙 Waiting...";
 
-  makeButtons(players,n=>{
-    db.ref(`games/${gameId}/wolfVotes/${myName}`).set(n);
-    ui.innerHTML="✅ Voted";
-  },n=>n!==myName && players[n].role!=="werewolf" && players[n].role!=="alpha");
+  // WEREWOLVES
+  if((role==="werewolf" || role==="alpha") && game.wolfVotes){
+
+    ui.innerHTML="🐺 Vote who to kill";
+
+    makeButtons(players,t=>{
+      db.ref(`games/${gameId}/wolfVotes/${myName}`).set(t);
+      ui.innerHTML="✅ You have chosen";
+    },n=>n!==myName && !players[n].role.includes("wolf"));
+  }
+
+  // DOCTOR
+  if(role==="doctor" && !game.actions?.save){
+
+    ui.innerHTML="💉 Choose someone to save";
+
+    makeButtons(players,t=>{
+      db.ref(`games/${gameId}/actions/save`).set(t);
+      ui.innerHTML="✅ You have chosen";
+    },n=>n!==myName);
+  }
+
+  // SEER
+  if(role==="seer" && !game.actions?.reveal){
+
+    ui.innerHTML="🔮 Choose someone";
+
+    makeButtons(players,t=>{
+      db.ref(`games/${gameId}/actions/reveal`).set(t);
+
+      alert(players[t].role.includes("wolf") ? "🐺 WEREWOLF" : "🙂 NOT WOLF");
+
+      ui.innerHTML="✅ You have chosen";
+    },n=>n!==myName);
+  }
 }
 
-function showDoctor(players){
-  ui.innerHTML="💉 Save someone";
+function voteUI(players){
+  let ui=document.getElementById("ui");
+  ui.innerHTML="☀️ Vote for a player";
 
-  makeButtons(players,n=>{
-    db.ref(`games/${gameId}/actions/save`).set(n);
-    ui.innerHTML="✅ Saved";
-  },n=>n!==myName);
-}
-
-function showSeer(players){
-  ui.innerHTML="🔮 Reveal someone";
-
-  makeButtons(players,n=>{
-    db.ref(`games/${gameId}/actions/seer`).set(n);
-    alert(players[n].role.includes("wolf")?"🐺 WOLF":"🙂 SAFE");
-    ui.innerHTML="✅ Done";
-  },n=>n!==myName);
-}
-
-function showVote(players){
-  ui.innerHTML="☀️ Vote";
-
-  makeButtons(players,n=>{
-    db.ref(`games/${gameId}/votes/${myName}`).set(n);
-    ui.innerHTML="🗳️ Voted";
+  makeButtons(players,t=>{
+    db.ref(`games/${gameId}/votes/${myName}`).set(t);
+    ui.innerHTML="🗳️ You have voted";
   },n=>n!==myName);
 
   let skip=document.createElement("button");
-  skip.innerText="Skip";
+  skip.innerText="⏭ Skip Vote";
   skip.onclick=()=>{
     db.ref(`games/${gameId}/votes/${myName}`).set("SKIP");
-    ui.innerHTML="Skipped";
+    ui.innerHTML="⏭ You skipped";
   };
+
   ui.appendChild(skip);
 }
 
 function makeButtons(players,cb,filter){
+  let ui=document.getElementById("ui");
+
   Object.keys(players).forEach(n=>{
     if(players[n].alive){
       if(filter && !filter(n)) return;
+
       let b=document.createElement("button");
       b.innerText=n;
       b.onclick=()=>cb(n);

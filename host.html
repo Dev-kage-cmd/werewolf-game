@@ -5,25 +5,45 @@
 
 <style>
 body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
-.big { font-size:120px; margin-top:20vh; }
-.timer { font-size:40px; }
-.card { background:#1c1c2b; margin:15px; padding:20px; border-radius:20px; }
+
+.big {
+  font-size:120px;
+  margin-top:20vh;
+}
+
+.timer {
+  font-size:40px;
+}
+
+.card {
+  background:#1c1c2b;
+  margin:15px;
+  padding:20px;
+  border-radius:20px;
+}
 </style>
 </head>
 
 <body>
 
 <div id="setup">
+
 <h1>🐺 Host</h1>
-<div class="card" id="roles"></div>
+
 <div class="card">
-<button onclick="createGame()">Create</button>
+<div id="roles"></div>
+</div>
+
+<div class="card">
+<button onclick="createGame()">Create Game</button>
 <button onclick="startGame()">Start</button>
 </div>
+
 <div class="card">
 <canvas id="qr"></canvas>
 <p id="link"></p>
 </div>
+
 </div>
 
 <div id="game" style="display:none;">
@@ -36,6 +56,46 @@ body { background:#0f0f1a; color:white; text-align:center; font-family:Arial; }
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
 <script>
+
+// ===== AUDIO FILES (PUT YOUR MP3 LINKS HERE) =====
+const audio = {
+  start: "PUT_LINK_HERE.mp3",
+
+  werewolfOpen: "PUT_LINK_HERE.mp3",
+  werewolfClose: "PUT_LINK_HERE.mp3",
+
+  doctorOpen: "PUT_LINK_HERE.mp3",
+  doctorClose: "PUT_LINK_HERE.mp3",
+
+  seerOpen: "PUT_LINK_HERE.mp3",
+  seerClose: "PUT_LINK_HERE.mp3",
+
+  morning: [
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3"
+  ],
+
+  night: [
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3",
+    "PUT_LINK_HERE.mp3"
+  ]
+};
+
+function play(src){
+  if(!src) return;
+  const a = new Audio(src);
+  a.play();
+}
+
+function playRandom(arr){
+  const r = arr[Math.floor(Math.random()*arr.length)];
+  play(r);
+}
+
 const firebaseConfig = {
   apiKey: "AIzaSyDz6gkzRAAez80-ewZyX-ev4303PQb_wfI",
   authDomain: "werewolf-10fbd.firebaseapp.com",
@@ -49,196 +109,246 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let roles = {
-  werewolf: 1,
-  alpha: 0,
-  doctor: 1,
-  seer: 1,
-  hunter: 0,
-  jester: 0,
-  villager: 2
-};
+const roles = ["werewolf","alpha","villager","seer","doctor","hunter","jester"];
+let roleCounts={}, gameId="", gameData={};
 
-function renderRoles(){
-  const div = document.getElementById("roles");
-  div.innerHTML = "";
+roles.forEach(r=>{
+  roleCounts[r]=0;
+  let div=document.createElement("div");
+  div.innerHTML=`${r}
+  <button onclick="change('${r}',-1)">-</button>
+  <span id="${r}">0</span>
+  <button onclick="change('${r}',1)">+</button>`;
+  document.getElementById("roles").appendChild(div);
+});
 
-  Object.keys(roles).forEach(role=>{
-    const row = document.createElement("div");
-
-    row.innerHTML = `
-      <b>${role.toUpperCase()}</b><br>
-      <button onclick="changeRole('${role}', -1)">-</button>
-      ${roles[role]}
-      <button onclick="changeRole('${role}', 1)">+</button>
-      <hr>
-    `;
-
-    div.appendChild(row);
-  });
+function change(r,a){
+  roleCounts[r]=Math.max(0,roleCounts[r]+a);
+  document.getElementById(r).innerText=roleCounts[r];
 }
-
-function changeRole(role, amount){
-  roles[role] += amount;
-  if(roles[role] < 0) roles[role] = 0;
-  renderRoles();
-}
-
-const sounds = {
-  start: "",
-  wolfOpen: "",
-  wolfClose: "",
-  doctorOpen: "",
-  doctorClose: "",
-  seerOpen: "",
-  seerClose: "",
-  morning: ["","","",""],
-  evening: ["","","",""]
-};
-
-function play(sound){
-  if(!sound) return;
-  new Audio(sound).play();
-}
-
-function random(arr){
-  return arr[Math.floor(Math.random()*arr.length)];
-}
-
-let gameId="", gameData={};
 
 function createGame(){
   gameId=Math.random().toString(36).substr(2,6);
 
   db.ref("games/"+gameId).set({
+    roles:roleCounts,
     players:{},
     phase:"lobby",
+    votes:{},
     wolfVotes:{},
     actions:{},
-    votes:{}
+    ended:false
   });
 
-  const base = "https://dev-kage-cmd.github.io/werewolf-game/";
-  const url = base + "player.html?game=" + gameId;
+  const url = "https://dev-kage-cmd.github.io/werewolf-game/player.html?game=" + gameId;
 
   QRCode.toCanvas(document.getElementById("qr"), url);
-  document.getElementById("link").innerText=url;
+  document.getElementById("link").innerText = url;
 
-  db.ref("games/"+gameId).on("value", s=>gameData=s.val());
+  listen();
+}
+
+function listen(){
+  db.ref("games/"+gameId).on("value", snap=>{
+    gameData=snap.val();
+  });
+}
+
+function checkAllReady(){
+  if(!gameData.players) return false;
+
+  const players = Object.values(gameData.players);
+
+  if(players.length === 0) return false;
+
+  return players.every(p => p.ready === true);
 }
 
 function startGame(){
-  play(sounds.start);
+  assignRoles();
+  speak("Roles assigned. Press ready on your device");
 
-  const playerNames = Object.keys(gameData.players || {});
-  let roleList = [];
+  // Wait loop
+  const interval = setInterval(()=>{
+    if(checkAllReady()){
+      clearInterval(interval);
 
-  Object.keys(roles).forEach(r=>{
-    for(let i=0;i<roles[r];i++) roleList.push(r);
+      speak("Everyone is ready. The game is starting");
+
+      document.getElementById("setup").style.display="none";
+      document.getElementById("game").style.display="block";
+
+      setPhase("night");
+      runNight();
+    }
+  },1000);
+}
+
+function assignRoles(){
+  let pool=[];
+  for(let r in roleCounts){
+    for(let i=0;i<roleCounts[r];i++) pool.push(r);
+  }
+
+  Object.keys(gameData.players).forEach(name=>{
+    let role=pool.splice(Math.floor(Math.random()*pool.length),1)[0]||"villager";
+    let extra = (role==="alpha") ? {lives:2} : {};
+    db.ref(`games/${gameId}/players/${name}`).update({role,...extra});
   });
-
-  // Shuffle roles
-  roleList.sort(()=>Math.random()-0.5);
-
-  playerNames.forEach((name,i)=>{
-    db.ref(`games/${gameId}/players/${name}/role`)
-      .set(roleList[i] || "villager");
-  });
-
-  document.getElementById("setup").style.display="none";
-  document.getElementById("game").style.display="block";
-
-  setPhase("night");
-  runNight();
 }
 
 function setPhase(p){
   db.ref("games/"+gameId+"/phase").set(p);
 
-  document.getElementById("phaseIcon").innerText = p==="night" ? "🌙" : "☀️";
+  document.getElementById("phaseIcon").innerText = 
+    p === "night" ? "🌙" : "☀️";
+
+  document.getElementById("timer").innerText = "";
+}
+function speak(t){
+  speechSynthesis.speak(new SpeechSynthesisUtterance(t));
 }
 
-async function waitFor(condition){
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function waitForVotes(path, needed){
   return new Promise(resolve=>{
-    const i=setInterval(()=>{
-      if(condition()){
-        clearInterval(i);
+    const ref = db.ref(`games/${gameId}/${path}`);
+    const check = snap=>{
+      const data = snap.val() || {};
+      if(Object.keys(data).length >= needed){
+        ref.off("value", check);
         resolve();
       }
-    },500);
+    };
+    ref.on("value", check);
   });
+}
+
+function alivePlayers(){
+  return Object.entries(gameData.players)
+    .filter(([_,p])=>p.alive);
 }
 
 async function runNight(){
   setPhase("night");
-  play(random(sounds.evening));
+  playRandom(audio.night);
 
-  db.ref("games/"+gameId+"/wolfVotes").set({});
-  db.ref("games/"+gameId+"/actions").set({});
+  db.ref(`games/${gameId}/wolfVotes`).set({});
+  db.ref(`games/${gameId}/actions`).set({});
+
+  await delay(2000);
 
   // WEREWOLVES
-  db.ref("games/"+gameId+"/activeRole").set("werewolf");
-  play(sounds.wolfOpen);
+  play(audio.werewolfOpen);
 
-  await waitFor(()=>{
-    let wolves = Object.entries(gameData.players||{})
-      .filter(([n,p])=>p.role==="werewolf"||p.role==="alpha");
-    let votes = gameData.wolfVotes||{};
-    return wolves.length>0 && Object.keys(votes).length>=wolves.length;
-  });
+  let wolves = alivePlayers().filter(([_,p])=>p.role==="werewolf"||p.role==="alpha");
+  await waitForVotes("wolfVotes", wolves.length);
 
-  play(sounds.wolfClose);
+  play(audio.werewolfClose);
+  await delay(2000);
 
   // DOCTOR
-  db.ref("games/"+gameId+"/activeRole").set("doctor");
-  play(sounds.doctorOpen);
-
-  await waitFor(()=>gameData.actions?.save);
-
-  play(sounds.doctorClose);
+  let doctor = alivePlayers().find(([_,p])=>p.role==="doctor");
+  if(doctor){
+    play(audio.doctorOpen);
+    await waitForVotes("actions/save", 1);
+    play(audio.doctorClose);
+    await delay(2000);
+  }
 
   // SEER
-  db.ref("games/"+gameId+"/activeRole").set("seer");
-  play(sounds.seerOpen);
-
-  await waitFor(()=>gameData.actions?.seer);
-
-  play(sounds.seerClose);
+  let seer = alivePlayers().find(([_,p])=>p.role==="seer");
+  if(seer){
+    play(audio.seerOpen);
+    await waitForVotes("actions/reveal", 1);
+    play(audio.seerClose);
+    await delay(2000);
+  }
 
   resolveNight();
 }
 
 function resolveNight(){
-  let votes=gameData.wolfVotes||{}, count={};
+  db.ref("games/"+gameId).once("value", snap=>{
+    const g=snap.val();
+    let wolfVotes=g.wolfVotes||{}, count={};
 
-  Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
+    Object.values(wolfVotes).forEach(v=>count[v]=(count[v]||0)+1);
 
-  let target = Object.keys(count).sort((a,b)=>count[b]-count[a])[0];
-  let save = gameData.actions?.save;
+    let max=0,target=null;
+    for(let p in count){
+      if(count[p]>max){max=count[p]; target=p;}
+    }
 
-  if(target && target!==save){
-    db.ref(`games/${gameId}/players/${target}/alive`).set(false);
-  }
+    let save=g.actions?.save;
 
-  runDay();
+    if(target && target!==save){
+      killPlayer(target);
+      speak(target+" died");
+    } else speak("No one died");
+
+    if(checkWin()) return;
+
+    setPhase("day");
+    runDay();
+  });
 }
 
-function runDay(){
+function killPlayer(name){
+  let p=gameData.players[name];
+
+  if(p.role==="alpha"){
+    if(p.lives>1){
+      db.ref(`games/${gameId}/players/${name}/lives`).set(p.lives-1);
+      speak("The alpha wolf is hurt");
+      return;
+    }
+  }
+
+  db.ref(`games/${gameId}/players/${name}/alive`).set(false);
+}
+
+async function runDay(){
   setPhase("day");
-  play(random(sounds.morning));
+  playRandom(audio.morning);
 
   let t=60;
-  const el=document.getElementById("timer");
+  let el=document.getElementById("timer");
 
-  let int=setInterval(()=>{
-    el.innerText="Time: "+t;
-    t--;
+  return new Promise(resolve=>{
+    let int=setInterval(()=>{
 
-    if(t<0){
-      clearInterval(int);
-      countVotes();
-    }
-  },1000);
+      el.innerText = "Time: " + t;
+
+      // ALL VOTED → END EARLY
+      let alive = alivePlayers().map(([n])=>n);
+      let votes = gameData.votes || {};
+
+      if(Object.keys(votes).length >= alive.length){
+        clearInterval(int);
+        countVotes();
+        resolve();
+      }
+
+      t--;
+
+      if(t < 0){
+        clearInterval(int);
+        countVotes();
+        resolve();
+      }
+
+    },1000);
+  });
+}
+
+function checkAllVotes(){
+  let alive=Object.keys(gameData.players).filter(p=>gameData.players[p].alive);
+  let votes=gameData.votes||{};
+  if(Object.keys(votes).length>=alive.length){
+    countVotes();
+  }
 }
 
 function countVotes(){
@@ -246,24 +356,54 @@ function countVotes(){
 
   Object.values(votes).forEach(v=>count[v]=(count[v]||0)+1);
 
-  let winner = Object.keys(count).sort((a,b)=>count[b]-count[a])[0];
-
-  if(winner && winner!=="SKIP"){
-    const role = gameData.players[winner].role;
-    
-    if(role === "jester"){
-      alert("🤡 JESTER WINS!");
-      location.reload();
-    return;
+  let max=0,winners=[];
+  for(let p in count){
+    if(count[p]>max){max=count[p]; winners=[p];}
+    else if(count[p]===max) winners.push(p);
   }
-    db.ref(`games/${gameId}/players/${winner}/alive`).set(false);
+
+  if(winners.length>1||winners[0]==="SKIP"){
+    speak("No one eliminated");
+  } else {
+    killPlayer(winners[0]);
+    speak(winners[0]+" eliminated");
+
+    if(gameData.players[winners[0]].role==="jester"){
+      return endGame("Jester wins!");
+    }
   }
 
   db.ref("games/"+gameId+"/votes").set({});
+
+  if(checkWin()) return;
+
+  setPhase("night");
   runNight();
 }
 
-renderRoles();
+function checkWin(){
+  let alive=Object.values(gameData.players).filter(p=>p.alive);
+
+  let wolves=alive.filter(p=>p.role==="werewolf"||p.role==="alpha").length;
+  let others=alive.length-wolves;
+
+  if(wolves===0){
+    endGame("Villagers win!");
+    return true;
+  }
+
+  if(wolves>=others){
+    endGame("Werewolves win!");
+    return true;
+  }
+
+  return false;
+}
+
+function endGame(msg){
+  speak(msg);
+  db.ref("games/"+gameId).update({ended:true,winner:msg});
+}
 </script>
 
 </body>
